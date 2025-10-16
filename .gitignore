@@ -6,6 +6,9 @@ __pycache__/
 # C extensions
 *.so
 
+datasets/
+workdir_helmet_unify/
+
 # Distribution / packaging
 .Python
 build/
