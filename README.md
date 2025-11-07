@@ -1,160 +1,145 @@
-# Destructible Vinyl ("Eggshell") Sticker Tampering Detection
+# Sterile-Field Micro-Contaminant Detector (SF-MCD)
 
-Project goal
-- Build a lightweight, easy-to-train system (suitable for Google Colab free tier) that classifies destructible vinyl security stickers as either:
-  - `Intact` (no tampering), or
-  - `Tampered` (attempted removal which causes the sticker to shatter/fragment).
-- Approach: Pre-process images with Canny edge detection to extract fracture/edge maps, then train a small custom CNN on these edge maps.
+**Project Status:** Proof-of-Concept
 
-Why this problem and approach
-- Destructible vinyl stickers break into many small fragments when tampered with; the resulting fracture lines produce high-frequency edge patterns.
-- Applying a Canny filter before training simplifies the input representation (black/white edge maps), letting a small CNN learn pattern differences faster and with less data and compute than training on RGB images.
-- This is beginner-friendly, trains quickly on Colab, and focuses the model on the critical signal (fracture lines).
+This project is a novel computer vision solution designed to detect micro-contaminants on sterile surgical fields using a hybrid "Filter + CNN" architecture.
 
-Quick overview / focused plan
-1. Objective
-   - Binary classification (Intact vs Tampered) using Canny edge maps → small CNN.
+The primary goal is to create a system that can run on a simple webcam and alert a surgical team if a sterile drape is compromised by a foreign object, such as a single hair, a fiber, or other small particles.
 
-2. Dataset (DIY)
-   - Acquire destructible vinyl stickers (commercial eggshell/destructible labels).
-   - Apply stickers to a variety of surfaces (plastic, cardboard, metal).
-   - Capture `Intact` photos: multiple images per sticker under varied lighting and slight angle changes.
-   - Induce tampering: peel, scrape, or cut to cause fracturing; capture `Tampered` photos.
-   - Organize images into:
-     - data/raw/intact/
-     - data/raw/tampered/
-   - Target initially: 100–200 images per class. (More is better, but Colab-friendly training can work with a few hundred images when using Canny.)
+## The Core Problem: High-Noise, Low-Signal
 
-3. Image preprocessing (OpenCV)
-   - Pipeline per image:
-     1. Load image
-     2. Convert to grayscale
-     3. Optional Gaussian blur (e.g., 5x5) to reduce sensor noise but preserve edges
-     4. Apply Canny (tune lower/upper thresholds empirically)
-     5. Save edge map (same folder structure under data/edges/)
-   - Save edge maps (PNG) and use those as input to the CNN. This reduces variations due to color, texture, or lighting.
+In a medical environment, sterile fields are critical for preventing Surgical Site Infections (SSIs). A single contaminant, like a hair, can compromise the field.
 
-4. Model (beginner-friendly)
-   - Framework: TensorFlow + Keras
-   - Example architecture (small, custom):
-     - Input: edge map (e.g., 128x128 or 224x224, single channel)
-     - Conv2D(32, 3x3) → ReLU → MaxPool
-     - Conv2D(64, 3x3) → ReLU → MaxPool
-     - Conv2D(128, 3x3) → ReLU → MaxPool (optional)
-     - Flatten → Dense(64) → ReLU → Dropout(0.5)
-     - Output Dense(1) → Sigmoid
-   - Loss: Binary crossentropy
-   - Optimizer: Adam
-   - Metrics: Accuracy, Precision, Recall, F1 (compute F1 in evaluation script)
+This is a difficult computer vision problem for two reasons:
 
-5. Training & Platform
-   - Use Google Colab (free tier). Typical flow:
-     - Mount Google Drive for dataset persistence, or upload dataset to Colab session storage.
-     - pip install -r requirements.txt (OpenCV, tensorflow, numpy, scikit-learn)
-     - Run preprocessing script to create Canny edge maps.
-     - Train with ImageDataGenerator or tf.data (use on-the-fly augmentation for edges: small rotations, shifts).
-     - Keep image size small (128x128) to reduce memory/compute.
+1.  **Low-Signal Target:** The contaminant (a single hair or a tiny scrap) is extremely small and has very low contrast against the background.
+2.  **High-Noise Background:** The "sterile" drape itself is not a uniform surface. It is covered in wrinkles, folds, and shadows from operating room lights.
 
-6. Evaluation & priorities
-   - Use a held-out test set.
-   - Report: Accuracy, Precision, Recall, F1-score.
-   - Prioritize Recall for the `Tampered` class (we prefer false positives over missed tampering).
-   - Compare Canny+CNN vs same CNN trained on raw grayscale images (control experiment) to demonstrate the filter's benefit.
+A simple Convolutional Neural Network (CNN) or a standard edge detector (like Sobel or Canny) will fail. The network will incorrectly learn that the "wrinkles" and "shadows"—which are much stronger and more frequent signals—are the features to detect, leading to an unusable rate of false positives.
 
-Repository structure (recommended)
-- README.md (this file)
-- LICENSE
-- data/
-  - raw/
-    - intact/
-    - tampered/
-  - edges/
-    - train/
-      - intact/
-      - tampered/
-    - val/
-      - intact/
-      - tampered/
-- notebooks/
-  - colab-experiments.ipynb
-- scripts/
-  - preprocess_canny.py        # script to convert raw images → edge maps
-  - train_model.py             # Keras training script for edge maps
-  - evaluate.py                # evaluation metrics & confusion matrix
-- models/
-  - checkpoints/
-  - final/
-- legacy/
-  - helmet_detection/          # (optional) previous project artifacts
-- .gitignore
-- requirements.txt
+**The solution is not to *find the hair*, but to *suppress the background*.**
 
-Example preprocessing snippet (scripts/preprocess_canny.py)
-```python
-# This snippet is illustrative; full script should handle folders, logging, params
-import cv2
-import os
+## How It Works: The Filter-First Architecture
 
-def make_edge_map(in_path, out_path, blur_ksize=(5,5), canny_thresh1=50, canny_thresh2=150):
-    img = cv2.imread(in_path)
-    gray = cv2.cvtColor(img, cv2.COLOR_BGR2GRAY)
-    blurred = cv2.GaussianBlur(gray, blur_ksize, 0)
-    edges = cv2.Canny(blurred, canny_thresh1, canny_thresh2)
-    cv2.imwrite(out_path, edges)
+This project solves the "noise" problem by *never* showing the original image to the CNN. Instead, it uses a classical image processing filter to create an "artifact map" that isolates the contaminant. The CNN is then trained *only* on this map.
+
+This hybrid approach forces the model to learn the correct features.
+
+### Step 1: The "Difference of Gaussians" (DoG) Pre-processing Filter
+
+The key insight is that the "noise" (wrinkles, shadows) and the "signal" (hair, particles) exist in different spatial frequencies.
+
+  * **Wrinkles/Shadows:** Low-frequency (broad, soft, blurry shapes).
+  * **Hair/Particles:** High-frequency (thin, sharp, fine-detailed lines and specks).[1]
+
+We use a **Difference of Gaussians (DoG)** filter to act as a band-pass filter, separating these frequencies. This technique is also a computationally efficient approximation of the Laplacian of Gaussian (LoG) operator, which is excellent for blob and edge detection.
+
+The process is as follows:
+
+1.  **Read Image:** The $1920\times1080$ color frame is read from the webcam.
+2.  **Grayscale:** The image is converted to grayscale.
+3.  **Create Broad Blur:** We apply a large Gaussian blur (e.g., $25\times25$ kernel). This "blurs out" the fine details of the hair and particles, leaving *only* the low-frequency wrinkles and shadows.
+4.  **Create Fine Blur:** We apply a very small Gaussian blur (e.g., $3\times3$ kernel). This removes tiny pixel noise but preserves the hair, particles, *and* the wrinkles.
+5.  **Subtract:** We subtract the `Broad Blur` image from the `Fine Blur` image. This subtraction cancels out the common low-frequency information (the wrinkles/shadows), leaving *only* the high-frequency details.
+6.  **Threshold & Normalize:** The resulting "artifact map" is thresholded to make the contaminants stand out as white pixels on a black background.
+
+**Visualizing the Process:**
+
+| Original Image (High-Noise) | DoG Filter Output (High-Signal) |
+| :--- | :--- |
+|\!([httpsfakesite.com/wrinkled\_drape.png](https://www.google.com/search?q=https://httpsfakesite.com/wrinkled_drape.png)) | |
+| **Result:** A *sterile* drape becomes a (mostly) black image. A *contaminated* drape becomes a black image with clear white specks or lines. |
+
+### Step 2: The Simple CNN Classifier
+
+The "complexity" is now handled. The CNN's job is simple. It is *not* trained on the original photos, but *exclusively* on the `DoG_Map` outputs from Step 1.
+
+  * **Architecture:** A lightweight, custom CNN (e.g., 4-5 convolutional layers followed by a dense classifier). This avoids the need for heavy, pre-trained models.
+  * **Input:** A $128\times128\times1$ (grayscale) `DoG_Map` image.
+  * **Output:** A 4-class softmax classification:
+    1.  `sterile`
+    2.  `contaminant_hair`
+    3.  `contaminant_trash`
+    4.  `contaminant_both`
+
+The network learns to classify the *patterns* of the artifacts. A long, thin line is `hair` [2], a small cluster of specks is `trash`, and a black image is `sterile`.
+
+## Project Structure
+
+```
+/sterile-field-detector
+│
+├── 01_data_collection/
+│   ├── capture_video.py        # Simple script to record.mp4 files for each class.
+│   └── extract_frames.py       # Converts videos to frames (e.g., 4fps) and saves to /dataset_raw.
+│
+├── 02_preprocessing/
+│   ├── build_dataset.py        # Applies the DoG filter to /dataset_raw and saves maps to /dataset_processed.
+│
+├── 03_training/
+│   ├── model.py                # Defines the simple CNN architecture.
+│   ├── train.py                # Loads processed data and trains the model.
+│   └── sterile_model.h5        # The final trained model weights.
+│
+├── 04_inference/
+│   └── run_live_detector.py    # Runs the full pipeline (capture -> filter -> CNN) on a live webcam feed.
+│
+└── README.md                   # You are here.
 ```
 
-Example small Keras model (scripts/train_model.py — excerpt)
-```python
-import tensorflow as tf
-from tensorflow.keras import layers, models
+## Dataset Generation (Zero-Cost)
 
-def build_small_cnn(input_shape=(128,128,1)):
-    model = models.Sequential([
-        layers.Conv2D(32, (3,3), activation='relu', input_shape=input_shape),
-        layers.MaxPooling2D((2,2)),
-        layers.Conv2D(64, (3,3), activation='relu'),
-        layers.MaxPooling2D((2,2)),
-        layers.Flatten(),
-        layers.Dense(64, activation='relu'),
-        layers.Dropout(0.5),
-        layers.Dense(1, activation='sigmoid')
-    ])
-    model.compile(optimizer='adam', loss='binary_crossentropy', metrics=['accuracy'])
-    return model
+The dataset can be generated in under 15 minutes using a webcam and basic household items.
+
+**Materials:**
+
+  * **Webcam:** Any standard webcam.
+  * **Sterile Drape:** A blue paper shop towel, a piece of craft paper, or any solid-color (blue/green) cloth that wrinkles easily.
+  * **Contaminants:**
+      * `hair`: A single human hair.
+      * `trash`: A few tiny scraps of paper, salt/sugar granules, or breadcrumbs.
+  * **Environment:** A desk lamp to create harsh shadows and wrinkles.
+
+**Process:**
+
+1.  Set up your "drape" and wrinkle it. Position the lamp to create strong shadows.
+2.  Run `01_data_collection/capture_video.py`.
+3.  Record 5-10 seconds of video for each of the four classes:
+      * **Class 1 (`sterile`):** Record the drape with only wrinkles and shadows. Move the camera slightly.
+      * **Class 2 (`contaminant_hair`):** Drop the hair onto the drape. Record it in different positions.
+      * **Class 3 (`contaminant_trash`):** Place the small scraps on the drape. Record.
+      * **Class 4 (`contaminant_both`):** Add both the hair and the scraps. Record.
+4.  Run `01_data_collection/extract_frames.py`. This script will pull \~2-4 frames per second from your videos and create a raw dataset of 1,000-2,000 images, automatically sorted into `sterile/`, `hair/`, etc.
+
+## How to Run
+
+**1. Create the Dataset:**
+Follow the steps in **Dataset Generation** above.
+
+**2. Pre-process the Data:**
+Run the DoG filter script. This converts all raw frames into artifact maps.
+
+```bash
+python 02_preprocessing/build_dataset.py
 ```
 
-Colab quickstart (notes)
-1. Upload or mount dataset to /content/data/
-2. Run preprocessing: python scripts/preprocess_canny.py --input data/raw --output data/edges --size 128
-3. Train: python scripts/train_model.py --data data/edges --epochs 25 --batch-size 32
-4. Evaluate: python scripts/evaluate.py --model models/final/best.h5 --data data/edges/test
+**3. Train the Model:**
+Run the training script. This will load the processed maps and train the simple CNN.
 
-Tips and hyperparameters to try
-- Canny thresholds: start with (50, 150) and sweep (30-100, 100-200). Lighting and camera noise affect good thresholds.
-- Image size: 128x128 is a good balance for Colab free tier.
-- Augmentations: small rotations (±10°), small translations, flips (if meaningful).
-- EarlyStopping on validation loss; save best checkpoint.
+```bash
+python 03_training/train.py
+```
 
-Ethics, safety, and limitations
-- This system detects visual signs of physical tampering on a specific sticker type. Results are only as good as your dataset and capture conditions.
-- False positives/negatives have consequences; design downstream processes (human-in-the-loop verification) accordingly.
-- The approach is tailored to destructible vinyl stickers that create fracture edge patterns; it is not a general-purpose tamper-detection for every sticker type.
+**4. Run the Live Detector:**
+Run the inference script to see the live results from your webcam\!
 
-What changed from the previous project
-- The original helmet detection focus is deprecated for this repository. This README documents the new task, repo structure suggestions, and scripts to build a Canny+CNN tamper detector. Move any reusable data loading, model utilities, or training scripts from the legacy helmet code into `scripts/` and adapt to single-channel (edge) inputs.
+```bash
+python 04_inference/run_live_detector.py
+```
 
-References and further reading (brief)
-- Use OpenCV docs for Canny and image processing basics.
-- TensorFlow/Keras tutorials for building and training CNNs.
-- Research on crack and fracture detection (useful for feature inspiration).
+## Technologies Used
 
-Contributing
-- If you want to help: contribute images (see data/README.md guidelines), improve preprocessing and augmentation strategies, or add more robust evaluation and CI.
-- Open issues or PRs against this repository. Tag early-stage issues as `help-wanted` and `good-first-issue`.
-
-Contact / Author
-- Repository owner: dontloseyourheadsu
-- If you want to fork or reuse, please credit the original repository and author.
-
-License
-- Add an appropriate license at the repository root (e.g., MIT) if you want the project to be reusable.
+  * **Python 3.10+**
+  * **OpenCV (`opencv-python`)**: Used for all image capture, video processing, and classical filtering (Grayscale, GaussianBlur, Subtract, Threshold).
+  * **TensorFlow / Keras:** Used to build, train, and run the simple CNN classifier.
+  * **Numpy:** For numerical operations.
