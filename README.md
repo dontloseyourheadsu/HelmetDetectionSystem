@@ -17,11 +17,11 @@ This is a difficult computer vision problem for two reasons:
 
 A simple Convolutional Neural Network (CNN) or a standard edge detector (like Sobel or Canny) will fail. The network will incorrectly learn that the "wrinkles" and "shadows"—which are much stronger and more frequent signals—are the features to detect, leading to an unusable rate of false positives.
 
-**The solution is not to *find the hair*, but to *suppress the background*.**
+**The solution is not to _find the hair_, but to _suppress the background_.**
 
 ## How It Works: The Filter-First Architecture
 
-This project solves the "noise" problem by *never* showing the original image to the CNN. Instead, it uses a classical image processing filter to create an "artifact map" that isolates the contaminant. The CNN is then trained *only* on this map.
+This project solves the "noise" problem by _never_ showing the original image to the CNN. Instead, it uses a classical image processing filter to create an "artifact map" that isolates the contaminant. The CNN is then trained _only_ on this map.
 
 This hybrid approach forces the model to learn the correct features.
 
@@ -29,8 +29,8 @@ This hybrid approach forces the model to learn the correct features.
 
 The key insight is that the "noise" (wrinkles, shadows) and the "signal" (hair, particles) exist in different spatial frequencies.
 
-  * **Wrinkles/Shadows:** Low-frequency (broad, soft, blurry shapes).
-  * **Hair/Particles:** High-frequency (thin, sharp, fine-detailed lines and specks).[1]
+- **Wrinkles/Shadows:** Low-frequency (broad, soft, blurry shapes).
+- **Hair/Particles:** High-frequency (thin, sharp, fine-detailed lines and specks).[1]
 
 We use a **Difference of Gaussians (DoG)** filter to act as a band-pass filter, separating these frequencies. This technique is also a computationally efficient approximation of the Laplacian of Gaussian (LoG) operator, which is excellent for blob and edge detection.
 
@@ -38,31 +38,31 @@ The process is as follows:
 
 1.  **Read Image:** The $1920\times1080$ color frame is read from the webcam.
 2.  **Grayscale:** The image is converted to grayscale.
-3.  **Create Broad Blur:** We apply a large Gaussian blur (e.g., $25\times25$ kernel). This "blurs out" the fine details of the hair and particles, leaving *only* the low-frequency wrinkles and shadows.
-4.  **Create Fine Blur:** We apply a very small Gaussian blur (e.g., $3\times3$ kernel). This removes tiny pixel noise but preserves the hair, particles, *and* the wrinkles.
-5.  **Subtract:** We subtract the `Broad Blur` image from the `Fine Blur` image. This subtraction cancels out the common low-frequency information (the wrinkles/shadows), leaving *only* the high-frequency details.
+3.  **Create Broad Blur:** We apply a large Gaussian blur (e.g., $25\times25$ kernel). This "blurs out" the fine details of the hair and particles, leaving _only_ the low-frequency wrinkles and shadows.
+4.  **Create Fine Blur:** We apply a very small Gaussian blur (e.g., $3\times3$ kernel). This removes tiny pixel noise but preserves the hair, particles, _and_ the wrinkles.
+5.  **Subtract:** We subtract the `Broad Blur` image from the `Fine Blur` image. This subtraction cancels out the common low-frequency information (the wrinkles/shadows), leaving _only_ the high-frequency details.
 6.  **Threshold & Normalize:** The resulting "artifact map" is thresholded to make the contaminants stand out as white pixels on a black background.
 
 **Visualizing the Process:**
 
-| Original Image (High-Noise) | DoG Filter Output (High-Signal) |
-| :--- | :--- |
-|\!([httpsfakesite.com/wrinkled\_drape.png](https://www.google.com/search?q=https://httpsfakesite.com/wrinkled_drape.png)) | |
-| **Result:** A *sterile* drape becomes a (mostly) black image. A *contaminated* drape becomes a black image with clear white specks or lines. |
+| Original Image (High-Noise)                                                                                                                  | DoG Filter Output (High-Signal) |
+| :------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------ |
+| \!([httpsfakesite.com/wrinkled_drape.png](https://www.google.com/search?q=https://httpsfakesite.com/wrinkled_drape.png))                     |                                 |
+| **Result:** A _sterile_ drape becomes a (mostly) black image. A _contaminated_ drape becomes a black image with clear white specks or lines. |
 
 ### Step 2: The Simple CNN Classifier
 
-The "complexity" is now handled. The CNN's job is simple. It is *not* trained on the original photos, but *exclusively* on the `DoG_Map` outputs from Step 1.
+The "complexity" is now handled. The CNN's job is simple. It is _not_ trained on the original photos, but _exclusively_ on the `DoG_Map` outputs from Step 1.
 
-  * **Architecture:** A lightweight, custom CNN (e.g., 4-5 convolutional layers followed by a dense classifier). This avoids the need for heavy, pre-trained models.
-  * **Input:** A $128\times128\times1$ (grayscale) `DoG_Map` image.
-  * **Output:** A 4-class softmax classification:
-    1.  `sterile`
-    2.  `contaminant_hair`
-    3.  `contaminant_trash`
-    4.  `contaminant_both`
+- **Architecture:** A lightweight, custom CNN (e.g., 4-5 convolutional layers followed by a dense classifier). This avoids the need for heavy, pre-trained models.
+- **Input:** A $128\times128\times1$ (grayscale) `DoG_Map` image.
+- **Output:** A 4-class softmax classification:
+  1.  `sterile`
+  2.  `contaminant_hair`
+  3.  `contaminant_trash`
+  4.  `contaminant_both`
 
-The network learns to classify the *patterns* of the artifacts. A long, thin line is `hair` [2], a small cluster of specks is `trash`, and a black image is `sterile`.
+The network learns to classify the _patterns_ of the artifacts. A long, thin line is `hair` [2], a small cluster of specks is `trash`, and a black image is `sterile`.
 
 ## Project Structure
 
@@ -93,28 +93,73 @@ The dataset can be generated in under 15 minutes using a webcam and basic househ
 
 **Materials:**
 
-  * **Webcam:** Any standard webcam.
-  * **Sterile Drape:** A blue paper shop towel, a piece of craft paper, or any solid-color (blue/green) cloth that wrinkles easily.
-  * **Contaminants:**
-      * `hair`: A single human hair.
-      * `trash`: A few tiny scraps of paper, salt/sugar granules, or breadcrumbs.
-  * **Environment:** A desk lamp to create harsh shadows and wrinkles.
+- **Webcam:** Any standard webcam.
+- **Sterile Drape:** A blue paper shop towel, a piece of craft paper, or any solid-color (blue/green) cloth that wrinkles easily.
+- **Contaminants:**
+  - `hair`: A single human hair.
+  - `trash`: A few tiny scraps of paper, salt/sugar granules, or breadcrumbs.
+- **Environment:** A desk lamp to create harsh shadows and wrinkles.
 
 **Process:**
 
 1.  Set up your "drape" and wrinkle it. Position the lamp to create strong shadows.
 2.  Run `01_data_collection/capture_video.py`.
 3.  Record 5-10 seconds of video for each of the four classes:
-      * **Class 1 (`sterile`):** Record the drape with only wrinkles and shadows. Move the camera slightly.
-      * **Class 2 (`contaminant_hair`):** Drop the hair onto the drape. Record it in different positions.
-      * **Class 3 (`contaminant_trash`):** Place the small scraps on the drape. Record.
-      * **Class 4 (`contaminant_both`):** Add both the hair and the scraps. Record.
+    - **Class 1 (`sterile`):** Record the drape with only wrinkles and shadows. Move the camera slightly.
+    - **Class 2 (`contaminant_hair`):** Drop the hair onto the drape. Record it in different positions.
+    - **Class 3 (`contaminant_trash`):** Place the small scraps on the drape. Record.
+    - **Class 4 (`contaminant_both`):** Add both the hair and the scraps. Record.
 4.  Run `01_data_collection/extract_frames.py`. This script will pull \~2-4 frames per second from your videos and create a raw dataset of 1,000-2,000 images, automatically sorted into `sterile/`, `hair/`, etc.
+
+## Dataset: Download and Frame Extraction (Automated)
+
+If you already have the videos in Google Drive (see link in `dataset/dataset_builder.py`), you can download them and extract frames in one step.
+
+What the script does:
+
+- Downloads the Drive folder into `dataset/download/`.
+- Finds all videos and infers the class from the filename keywords: `sterile`, `hair`, `trash`, `both` (otherwise `unknown`).
+- Computes how many frames to extract per video to reach ~1000 images per class, using each video’s duration:
+  - For a class, let T be the total duration (seconds) of all its videos.
+  - Frames-per-second rate r = 1000 / T.
+  - For each video with duration d, frames_for_video = ceil(r × d).
+- Extracts frames evenly across each video timeline and writes them to `dataset/frames/<video-name>/` where `<video-name>` is the video filename slug in lowercase with hyphens.
+
+Example folder name for a video named `Trash Hair.MP4` becomes:
+
+```
+dataset/frames/trash-hair/
+  frame_00000.png
+  frame_00001.png
+  ...
+```
+
+Run it:
+
+```bash
+# Install dependencies once
+pip install -r requirements.txt
+
+# Download from Drive and extract frames
+python dataset/dataset_builder.py
+```
+
+Notes:
+
+- The script targets ~1000 frames per class. If a class has very short total duration, the number may be slightly lower due to available frames.
+- Videos without the keywords fall under `unknown` and get a small default (≈250) frames total distributed proportionally to duration.
 
 ## How to Run
 
 **1. Create the Dataset:**
-Follow the steps in **Dataset Generation** above.
+You can either follow **Dataset Generation** above or use the automated script:
+
+```bash
+pip install -r requirements.txt
+python dataset/dataset_builder.py
+```
+
+This will populate `dataset/frames/<video-name>/` with extracted images.
 
 **2. Pre-process the Data:**
 Run the DoG filter script. This converts all raw frames into artifact maps.
@@ -139,7 +184,7 @@ python 04_inference/run_live_detector.py
 
 ## Technologies Used
 
-  * **Python 3.10+**
-  * **OpenCV (`opencv-python`)**: Used for all image capture, video processing, and classical filtering (Grayscale, GaussianBlur, Subtract, Threshold).
-  * **TensorFlow / Keras:** Used to build, train, and run the simple CNN classifier.
-  * **Numpy:** For numerical operations.
+- **Python 3.10+**
+- **OpenCV (`opencv-python`)**: Used for all image capture, video processing, and classical filtering (Grayscale, GaussianBlur, Subtract, Threshold).
+- **TensorFlow / Keras:** Used to build, train, and run the simple CNN classifier.
+- **Numpy:** For numerical operations.
