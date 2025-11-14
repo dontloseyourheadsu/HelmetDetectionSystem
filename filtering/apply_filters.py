@@ -6,55 +6,43 @@ from typing import List, Tuple, Dict
 import numpy as np
 from tqdm import tqdm
 
-# --- CONFIGURATION ---
-
-# 1) Kernel Sizes (ODD numbers)
-SMALL_KERNEL_SIZE = (5, 5)    # preserves thin lines
-LARGE_KERNEL_SIZE = (25, 25)  # removes low-frequency background
-
-# 2) Thresholding
+SMALL_KERNEL_SIZE = (5, 5)
+LARGE_KERNEL_SIZE = (25, 25)
 THRESHOLD_VALUE = 15
 
-# 3) Shape Classification Parameters (NEW: from advanced algorithm)
-# These parameters help distinguish hair from trash based on shape
 SHAPE_PARAMS = {
-    # --- Hair (Elongated, Solid) ---
-    'hair_min_area': 15,          # Min pixels to be considered
-    'hair_max_area': 2000,        # Max pixels (filters large shadows)
-    'hair_min_eccentricity': 4.0, # Higher = more "line-like" (MajorAxis / MinorAxis)
-    'hair_min_solidity': 0.75,    # Ratio of contour area to its convex hull area
-
-    # --- Trash (Compact, Solid) ---
+    'hair_min_area': 15,
+    'hair_max_area': 2000,
+    'hair_min_eccentricity': 4.0,
+    'hair_min_solidity': 0.75,
     'trash_min_area': 5,
     'trash_max_area': 200,
-    'trash_max_eccentricity': 2.5, # Lower = more "blob-like"
+    'trash_max_eccentricity': 2.5,
     'trash_min_solidity': 0.85
 }
 
-# 4) Output size
 TARGET_IMG_SIZE = (128, 128)
+OUTPUT_MODE = 'multichannel'
 
-# 5) Output mode: 'grayscale' or 'multichannel'
-# 'multichannel' creates a 3-channel BGR image: B=Cloth, G=Trash, R=Hair
-OUTPUT_MODE = 'multichannel'  # Change to 'grayscale' for original behavior
-
-# 6) Directories (relative to this script)
 SCRIPT_DIR = Path(__file__).resolve().parent
 RAW_DATA_DIR = (SCRIPT_DIR / "../dataset/frames").resolve()
-# Per user request: processed folder must be relative to filtering folder
 PROCESSED_DATA_DIR = (SCRIPT_DIR / "processed").resolve()
-# Required cloth color reference image (relative to this script)
 CLOTH_REF_PATH = (SCRIPT_DIR / "tablecloth-color.png").resolve()
 
-# 7) Cloth color range deltas (HSV)
 H_DELTA = 12
 S_DELTA = 80
 V_DELTA = 80
 
-# ---------------------------------------------------------------
-
 
 def list_classes(root: Path) -> List[str]:
+	"""List all class directories in the given root path.
+	
+	Args:
+		root: Path to the root directory containing class folders.
+		
+	Returns:
+		List of class directory names, excluding hidden directories.
+	"""
 	classes: List[str] = []
 	if not root.exists():
 		return classes
@@ -65,11 +53,32 @@ def list_classes(root: Path) -> List[str]:
 
 
 def clamp(val: int, lo: int, hi: int) -> int:
+	"""Clamp a value between a lower and upper bound.
+	
+	Args:
+		val: Value to clamp.
+		lo: Lower bound.
+		hi: Upper bound.
+		
+	Returns:
+		The clamped value.
+	"""
 	return max(lo, min(hi, val))
 
 
 
 def hsv_range_from_reference(ref_img_path: Path) -> Tuple[np.ndarray, np.ndarray]:
+	"""Calculate HSV color range from a reference cloth image.
+	
+	Args:
+		ref_img_path: Path to the reference cloth image.
+		
+	Returns:
+		Tuple of (lower_bound, upper_bound) HSV arrays.
+		
+	Raises:
+		FileNotFoundError: If the reference image cannot be read.
+	"""
 	ref_bgr = cv2.imread(str(ref_img_path))
 	if ref_bgr is None:
 		raise FileNotFoundError(f"Could not read cloth reference image: {ref_img_path}")
@@ -92,12 +101,19 @@ def hsv_range_from_reference(ref_img_path: Path) -> Tuple[np.ndarray, np.ndarray
 
 def crop_to_cloth_region(img_bgr: np.ndarray, lower_hsv: np.ndarray, upper_hsv: np.ndarray,
 						 margin_ratio: float = 0.05) -> np.ndarray:
-	"""Detect cloth by color, crop a tight bounding rectangle with a small margin.
-	Falls back to original image if no region is detected.
+	"""Detect cloth by color and crop to a bounding rectangle with margin.
+	
+	Args:
+		img_bgr: Input BGR image.
+		lower_hsv: Lower bound HSV array for cloth color.
+		upper_hsv: Upper bound HSV array for cloth color.
+		margin_ratio: Margin ratio to add around detected cloth region.
+		
+	Returns:
+		Cropped image containing the cloth region, or original image if no region is detected.
 	"""
 	hsv = cv2.cvtColor(img_bgr, cv2.COLOR_BGR2HSV)
 	mask = cv2.inRange(hsv, lower_hsv, upper_hsv)
-	# Clean mask
 	kernel = np.ones((5, 5), np.uint8)
 	mask = cv2.morphologyEx(mask, cv2.MORPH_CLOSE, kernel, iterations=2)
 	mask = cv2.morphologyEx(mask, cv2.MORPH_OPEN, kernel, iterations=1)
@@ -107,7 +123,7 @@ def crop_to_cloth_region(img_bgr: np.ndarray, lower_hsv: np.ndarray, upper_hsv: 
 		return img_bgr
 
 	c = max(contours, key=cv2.contourArea)
-	if cv2.contourArea(c) < 500:  # too small
+	if cv2.contourArea(c) < 500:
 		return img_bgr
 
 	x, y, w, h = cv2.boundingRect(c)
@@ -126,12 +142,17 @@ def classify_contours_by_shape(
 	contours: List[np.ndarray],
 	params: Dict[str, float]
 ) -> Tuple[List[np.ndarray], List[np.ndarray]]:
-	"""
-	Analyzes contours and classifies them as 'hair' or 'trash' based on shape properties.
-	Uses eccentricity (elongation) and solidity (compactness) metrics.
+	"""Classify contours as hair or trash based on shape properties.
 	
+	Uses eccentricity (elongation) and solidity (compactness) metrics to distinguish
+	between elongated hair-like objects and compact trash-like objects.
+	
+	Args:
+		contours: List of contours to classify.
+		params: Dictionary of shape classification parameters.
+		
 	Returns:
-		(hair_contours, trash_contours)
+		Tuple of (hair_contours, trash_contours).
 	"""
 	hair_contours = []
 	trash_contours = []
@@ -139,64 +160,64 @@ def classify_contours_by_shape(
 	for c in contours:
 		area = cv2.contourArea(c)
 		
-		# Need >= 5 points to fit an ellipse
 		if len(c) < 5:
 			continue
 			
 		try:
-			# Calculate Solidity (how "solid" vs "irregular" the shape is)
 			hull = cv2.convexHull(c)
 			hull_area = cv2.contourArea(hull)
 			if hull_area == 0:
 				continue
 			solidity = float(area) / hull_area
 			
-			# Calculate Eccentricity (elongation: major axis / minor axis)
 			(x, y), (MA, ma), angle = cv2.fitEllipse(c)
 			if ma == 0:
 				continue
-			eccentricity = float(MA) / ma  # High value = elongated (hair-like)
+			eccentricity = float(MA) / ma
 			
-			# --- Hair Logic: Elongated and solid ---
 			if (params['hair_min_area'] < area < params['hair_max_area'] and
 				eccentricity > params['hair_min_eccentricity'] and 
 				solidity > params['hair_min_solidity']):
 				hair_contours.append(c)
 				
-			# --- Trash Logic: Compact and solid ---
 			elif (params['trash_min_area'] < area < params['trash_max_area'] and
 				  eccentricity < params['trash_max_eccentricity'] and 
 				  solidity > params['trash_min_solidity']):
 				trash_contours.append(c)
 				
 		except cv2.error:
-			continue  # cv2.fitEllipse can fail on degenerate contours
+			continue
 			
 	return hair_contours, trash_contours
 
 
 def enhance_and_filter(gray: np.ndarray) -> np.ndarray:
-	"""Enhance features and apply DoG + threshold to highlight thin hairs and crumbs."""
-	# CLAHE to boost contrast
+	"""Enhance image features using DoG and edge detection.
+	
+	Applies CLAHE contrast enhancement, Difference of Gaussians (DoG), and Sobel edge
+	detection to highlight thin contaminants like hairs and crumbs.
+	
+	Args:
+		gray: Input grayscale image.
+		
+	Returns:
+		Binary thresholded image with enhanced features.
+	"""
 	clahe = cv2.createCLAHE(clipLimit=2.0, tileGridSize=(8, 8))
 	gray = clahe.apply(gray)
 
-	# DoG
 	small_blur = cv2.GaussianBlur(gray, SMALL_KERNEL_SIZE, 0)
 	large_blur = cv2.GaussianBlur(gray, LARGE_KERNEL_SIZE, 0)
 	dog = cv2.subtract(small_blur, large_blur)
 
-	# Edge emphasis (Sobel magnitude) and combine
 	sobelx = cv2.Sobel(gray, cv2.CV_16S, 1, 0, ksize=3)
 	sobely = cv2.Sobel(gray, cv2.CV_16S, 0, 1, ksize=3)
 	sobel_mag = cv2.convertScaleAbs(cv2.addWeighted(cv2.convertScaleAbs(sobelx), 1.0,
 													cv2.convertScaleAbs(sobely), 1.0, 0))
 	combined = cv2.addWeighted(dog, 0.7, sobel_mag, 0.3, 0)
 
-	# Binary map
 	_, thresh = cv2.threshold(combined, THRESHOLD_VALUE, 255, cv2.THRESH_BINARY | cv2.THRESH_OTSU)
 
-	# Light morphological smoothing to connect hair lines, keep crumbs
 	kernel = np.ones((3, 3), np.uint8)
 	thresh = cv2.morphologyEx(thresh, cv2.MORPH_CLOSE, kernel, iterations=1)
 	return thresh
@@ -208,67 +229,79 @@ def create_multichannel_output(
 	hair_contours: List[np.ndarray],
 	trash_contours: List[np.ndarray]
 ) -> np.ndarray:
+	"""Create a 3-channel BGR feature image for CNN training.
+	
+	Channels represent:
+	- Blue: Cloth area (cleaned background)
+	- Green: Trash mask
+	- Red: Hair mask
+	
+	Args:
+		h: Height of the output image.
+		w: Width of the output image.
+		cloth_mask: Binary mask of the cloth area.
+		hair_contours: List of contours classified as hair.
+		trash_contours: List of contours classified as trash.
+		
+	Returns:
+		Resized 3-channel BGR image with encoded features.
 	"""
-	Creates a 3-channel BGR feature image for CNN training:
-	- Blue Channel = Cloth Area (cleaned background)
-	- Green Channel = Trash Mask
-	- Red Channel = Hair Mask
-	"""
-	# Create blank masks for hair and trash
 	mask_hair = np.zeros((h, w), dtype=np.uint8)
 	mask_trash = np.zeros((h, w), dtype=np.uint8)
 	
-	# Draw the approved contours (filled)
 	if hair_contours:
 		cv2.drawContours(mask_hair, hair_contours, -1, 255, cv2.FILLED)
 	if trash_contours:
 		cv2.drawContours(mask_trash, trash_contours, -1, 255, cv2.FILLED)
 	
-	# Merge into BGR: B=Cloth, G=Trash, R=Hair
 	output_image = cv2.merge((cloth_mask, mask_trash, mask_hair))
-	
-	# Resize to target size
 	output_resized = cv2.resize(output_image, TARGET_IMG_SIZE, interpolation=cv2.INTER_AREA)
 	
 	return output_resized
 
 
 def process_image(image_path: Path, lower_hsv: np.ndarray, upper_hsv: np.ndarray) -> np.ndarray | None:
+	"""Process a single image through the filtering pipeline.
+	
+	Args:
+		image_path: Path to the input image.
+		lower_hsv: Lower HSV bound for cloth color detection.
+		upper_hsv: Upper HSV bound for cloth color detection.
+		
+	Returns:
+		Processed image array, or None if the image cannot be read.
+	"""
 	bgr = cv2.imread(str(image_path))
 	if bgr is None:
 		print(f"Warning: Could not read image {image_path}. Skipping.")
 		return None
 
-	# 1) Crop to cloth region using color mask
 	roi_bgr = crop_to_cloth_region(bgr, lower_hsv, upper_hsv, margin_ratio=0.06)
 	h, w = roi_bgr.shape[:2]
 
-	# 2) Convert to gray and enhance
 	gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
 	filtered = enhance_and_filter(gray)
 
-	# 3) Choose output mode
 	if OUTPUT_MODE == 'multichannel':
-		# NEW: Multi-channel approach with shape-based classification
-		# Create a cloth mask (inverted filtered to show cloth area)
 		cloth_mask = cv2.bitwise_not(filtered)
-		
-		# Find all contours in the filtered image
 		contours, _ = cv2.findContours(filtered, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
-		
-		# Classify contours by shape
 		hair_contours, trash_contours = classify_contours_by_shape(contours, SHAPE_PARAMS)
-		
-		# Create multi-channel output
 		out = create_multichannel_output(h, w, cloth_mask, hair_contours, trash_contours)
 	else:
-		# Original: Single-channel grayscale output
 		out = cv2.resize(filtered, TARGET_IMG_SIZE, interpolation=cv2.INTER_AREA)
 	
 	return out
 
 
 def find_first_image(root: Path) -> Path | None:
+	"""Find the first image file in any class directory.
+	
+	Args:
+		root: Root directory containing class folders.
+		
+	Returns:
+		Path to the first image found, or None if no images exist.
+	"""
 	exts = {'.png', '.jpg', '.jpeg', '.bmp'}
 	classes = list_classes(root)
 	for cls in classes:
@@ -280,16 +313,27 @@ def find_first_image(root: Path) -> Path | None:
 
 
 def estimate_hsv_range_from_sample(sample_img_path: Path) -> Tuple[np.ndarray, np.ndarray]:
+	"""Estimate cloth color HSV range from a sample image.
+	
+	Uses the central region of the image to estimate the cloth color.
+	
+	Args:
+		sample_img_path: Path to a sample image containing the cloth.
+		
+	Returns:
+		Tuple of (lower_bound, upper_bound) HSV arrays.
+		
+	Raises:
+		FileNotFoundError: If the sample image cannot be read.
+	"""
 	bgr = cv2.imread(str(sample_img_path))
 	if bgr is None:
 		raise FileNotFoundError(f"Could not read sample image to estimate cloth color: {sample_img_path}")
 	H, W = bgr.shape[:2]
-	# Use central region to approximate the cloth color
 	x0, x1 = int(W * 0.25), int(W * 0.75)
 	y0, y1 = int(H * 0.25), int(H * 0.75)
 	center = bgr[y0:y1, x0:x1]
 	hsv = cv2.cvtColor(center, cv2.COLOR_BGR2HSV)
-	# Slight blur to reduce noise before statistics
 	hsv = cv2.GaussianBlur(hsv, (5, 5), 0)
 	h = int(np.median(hsv[..., 0]))
 	s = int(np.median(hsv[..., 1]))
@@ -308,7 +352,7 @@ def estimate_hsv_range_from_sample(sample_img_path: Path) -> Tuple[np.ndarray, n
 
 
 def main() -> None:
-	# Prefer cloth reference if present; otherwise estimate from first available image
+	"""Main preprocessing pipeline for dataset filtering."""
 	if CLOTH_REF_PATH.exists():
 		lower_hsv, upper_hsv = hsv_range_from_reference(CLOTH_REF_PATH)
 		print(f"Using cloth reference: {CLOTH_REF_PATH}")
@@ -351,7 +395,6 @@ def main() -> None:
 		print(f"Processing {len(image_files)} images for class: '{class_name}'")
 		for image_path in tqdm(image_files, desc=class_name, unit="img"):
 			out_path = output_class_dir / (image_path.stem + ".png")
-			# Skip if already processed
 			if out_path.exists():
 				continue
 			result = process_image(image_path, lower_hsv, upper_hsv)

@@ -1,16 +1,12 @@
-"""
-Dataset builder: download videos from Google Drive and extract frames.
+"""Dataset builder for downloading videos and extracting frames.
 
-What it does
-- Uses DATASET_LINK (Google Drive folder) to download into dataset/download/.
-- Finds all videos in that folder.
-- Extracts a fixed number of frames per video (default 1000), evenly spaced over the full duration.
-- Output goes to dataset/frames/<video-name-slug>/frame_XXXXX.png.
+This module downloads videos from Google Drive and extracts evenly-spaced frames
+for dataset preparation.
 
-Run
+Usage:
 	python dataset/dataset_builder.py [--frames-per-video 1000] [--force-download]
 
-Requires
+Requirements:
 	pip install -r requirements.txt
 """
 
@@ -36,15 +32,24 @@ TARGET_IMAGES_PER_CLASS = 1000
 
 
 def slugify(stem: str) -> str:
+	"""Convert a filename stem to a URL-friendly slug.
+	
+	Args:
+		stem: Filename stem to slugify.
+		
+	Returns:
+		Slugified string with only alphanumeric characters and hyphens.
+	"""
 	s = stem.lower().strip().replace(" ", "-").replace("_", "-")
 	s = "".join(ch for ch in s if ch.isalnum() or ch == "-")
 	return s or "video"
 
 
 def download_dataset(force: bool = False) -> None:
-	"""Download the Drive folder unless videos are already present locally.
-
-	Set force=True or pass --force-download to re-download regardless.
+	"""Download the dataset from Google Drive.
+	
+	Args:
+		force: If True, re-download even if videos already exist locally.
 	"""
 	DOWNLOAD_DIR.mkdir(parents=True, exist_ok=True)
 
@@ -60,11 +65,18 @@ def download_dataset(force: bool = False) -> None:
 	try:
 		gdown.download_folder(DATASET_LINK, output=str(DOWNLOAD_DIR), quiet=False, use_cookies=False)
 	except Exception:
-		# Best-effort fallback
 		gdown.download(DATASET_LINK, output=str(DOWNLOAD_DIR), quiet=False)
 
 
 def find_videos(base: Path) -> List[Path]:
+	"""Find all video files in the directory tree.
+	
+	Args:
+		base: Root directory to search.
+		
+	Returns:
+		Sorted list of paths to video files.
+	"""
 	vids: List[Path] = []
 	for p in base.rglob("*"):
 		if p.is_file() and p.suffix.lower() in VIDEO_EXTS:
@@ -74,6 +86,14 @@ def find_videos(base: Path) -> List[Path]:
 
 
 def classify_by_filename(videos: List[Path]) -> Dict[str, List[Path]]:
+	"""Classify videos by keywords in their filenames.
+	
+	Args:
+		videos: List of video file paths.
+		
+	Returns:
+		Dictionary mapping class names to lists of video paths.
+	"""
 	groups: Dict[str, List[Path]] = {k: [] for k in CLASS_KEYS}
 	groups["unknown"] = []
 	for v in videos:
@@ -88,6 +108,14 @@ def classify_by_filename(videos: List[Path]) -> Dict[str, List[Path]]:
 
 
 def video_meta(path: Path) -> Tuple[int, float, float]:
+	"""Extract metadata from a video file.
+	
+	Args:
+		path: Path to the video file.
+		
+	Returns:
+		Tuple of (total_frames, fps, duration_seconds).
+	"""
 	cap = cv2.VideoCapture(str(path))
 	if not cap.isOpened():
 		return 0, 0.0, 0.0
@@ -99,6 +127,15 @@ def video_meta(path: Path) -> Tuple[int, float, float]:
 
 
 def compute_sampling_plan_per_video(videos: List[Path], frames_per_video: int) -> Dict[Path, int]:
+	"""Compute frame extraction plan for each video.
+	
+	Args:
+		videos: List of video file paths.
+		frames_per_video: Target number of frames to extract per video.
+		
+	Returns:
+		Dictionary mapping video paths to frame counts.
+	"""
 	plan: Dict[Path, int] = {}
 	for v in videos:
 		n_frames, fps, dur = video_meta(v)
@@ -107,6 +144,16 @@ def compute_sampling_plan_per_video(videos: List[Path], frames_per_video: int) -
 
 
 def extract_frames(video_path: Path, target_count: int, out_dir: Path) -> int:
+	"""Extract evenly-spaced frames from a video.
+	
+	Args:
+		video_path: Path to the video file.
+		target_count: Number of frames to extract.
+		out_dir: Output directory for extracted frames.
+		
+	Returns:
+		Number of frames successfully saved.
+	"""
 	out_dir.mkdir(parents=True, exist_ok=True)
 	cap = cv2.VideoCapture(str(video_path))
 	if not cap.isOpened() or target_count <= 0:
@@ -115,7 +162,6 @@ def extract_frames(video_path: Path, target_count: int, out_dir: Path) -> int:
 	if total <= 0:
 		cap.release()
 		return 0
-	# Determine exact indices to sample, evenly spaced across the video
 	desired = min(target_count, total)
 	indices = np.linspace(0, total - 1, num=desired, dtype=np.int64)
 
@@ -133,6 +179,7 @@ def extract_frames(video_path: Path, target_count: int, out_dir: Path) -> int:
 
 
 def main() -> None:
+	"""Main entry point for dataset building."""
 	parser = argparse.ArgumentParser(description="Download dataset and extract frames")
 	parser.add_argument(
 		"--force-download",
@@ -155,7 +202,6 @@ def main() -> None:
 	if not videos:
 		print("No videos found under dataset/download/.")
 		return
-	# Still classify for logging, but plan is per-video
 	_ = classify_by_filename(videos)
 	plan = compute_sampling_plan_per_video(videos, args.frames_per_video)
 
