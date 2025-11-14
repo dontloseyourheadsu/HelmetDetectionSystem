@@ -1,12 +1,12 @@
 import cv2
 import os
 from pathlib import Path
-from typing import List, Tuple
+from typing import List, Tuple, Dict
 
 import numpy as np
 from tqdm import tqdm
 
-# --- CONFIGURATION: Tune these if needed ---
+# --- CONFIGURATION ---
 
 # 1) Kernel Sizes (ODD numbers)
 SMALL_KERNEL_SIZE = (5, 5)    # preserves thin lines
@@ -15,10 +15,30 @@ LARGE_KERNEL_SIZE = (25, 25)  # removes low-frequency background
 # 2) Thresholding
 THRESHOLD_VALUE = 15
 
-# 3) Output size
+# 3) Shape Classification Parameters (NEW: from advanced algorithm)
+# These parameters help distinguish hair from trash based on shape
+SHAPE_PARAMS = {
+    # --- Hair (Elongated, Solid) ---
+    'hair_min_area': 15,          # Min pixels to be considered
+    'hair_max_area': 2000,        # Max pixels (filters large shadows)
+    'hair_min_eccentricity': 4.0, # Higher = more "line-like" (MajorAxis / MinorAxis)
+    'hair_min_solidity': 0.75,    # Ratio of contour area to its convex hull area
+
+    # --- Trash (Compact, Solid) ---
+    'trash_min_area': 5,
+    'trash_max_area': 200,
+    'trash_max_eccentricity': 2.5, # Lower = more "blob-like"
+    'trash_min_solidity': 0.85
+}
+
+# 4) Output size
 TARGET_IMG_SIZE = (128, 128)
 
-# 4) Directories (relative to this script)
+# 5) Output mode: 'grayscale' or 'multichannel'
+# 'multichannel' creates a 3-channel BGR image: B=Cloth, G=Trash, R=Hair
+OUTPUT_MODE = 'multichannel'  # Change to 'grayscale' for original behavior
+
+# 6) Directories (relative to this script)
 SCRIPT_DIR = Path(__file__).resolve().parent
 RAW_DATA_DIR = (SCRIPT_DIR / "../dataset/frames").resolve()
 # Per user request: processed folder must be relative to filtering folder
@@ -26,7 +46,7 @@ PROCESSED_DATA_DIR = (SCRIPT_DIR / "processed").resolve()
 # Required cloth color reference image (relative to this script)
 CLOTH_REF_PATH = (SCRIPT_DIR / "tablecloth-color.png").resolve()
 
-# 5) Cloth color range deltas (HSV)
+# 7) Cloth color range deltas (HSV)
 H_DELTA = 12
 S_DELTA = 80
 V_DELTA = 80
@@ -102,6 +122,59 @@ def crop_to_cloth_region(img_bgr: np.ndarray, lower_hsv: np.ndarray, upper_hsv: 
 	return roi if roi.size > 0 else img_bgr
 
 
+def classify_contours_by_shape(
+	contours: List[np.ndarray],
+	params: Dict[str, float]
+) -> Tuple[List[np.ndarray], List[np.ndarray]]:
+	"""
+	Analyzes contours and classifies them as 'hair' or 'trash' based on shape properties.
+	Uses eccentricity (elongation) and solidity (compactness) metrics.
+	
+	Returns:
+		(hair_contours, trash_contours)
+	"""
+	hair_contours = []
+	trash_contours = []
+	
+	for c in contours:
+		area = cv2.contourArea(c)
+		
+		# Need >= 5 points to fit an ellipse
+		if len(c) < 5:
+			continue
+			
+		try:
+			# Calculate Solidity (how "solid" vs "irregular" the shape is)
+			hull = cv2.convexHull(c)
+			hull_area = cv2.contourArea(hull)
+			if hull_area == 0:
+				continue
+			solidity = float(area) / hull_area
+			
+			# Calculate Eccentricity (elongation: major axis / minor axis)
+			(x, y), (MA, ma), angle = cv2.fitEllipse(c)
+			if ma == 0:
+				continue
+			eccentricity = float(MA) / ma  # High value = elongated (hair-like)
+			
+			# --- Hair Logic: Elongated and solid ---
+			if (params['hair_min_area'] < area < params['hair_max_area'] and
+				eccentricity > params['hair_min_eccentricity'] and 
+				solidity > params['hair_min_solidity']):
+				hair_contours.append(c)
+				
+			# --- Trash Logic: Compact and solid ---
+			elif (params['trash_min_area'] < area < params['trash_max_area'] and
+				  eccentricity < params['trash_max_eccentricity'] and 
+				  solidity > params['trash_min_solidity']):
+				trash_contours.append(c)
+				
+		except cv2.error:
+			continue  # cv2.fitEllipse can fail on degenerate contours
+			
+	return hair_contours, trash_contours
+
+
 def enhance_and_filter(gray: np.ndarray) -> np.ndarray:
 	"""Enhance features and apply DoG + threshold to highlight thin hairs and crumbs."""
 	# CLAHE to boost contrast
@@ -129,6 +202,37 @@ def enhance_and_filter(gray: np.ndarray) -> np.ndarray:
 	return thresh
 
 
+def create_multichannel_output(
+	h: int, w: int,
+	cloth_mask: np.ndarray,
+	hair_contours: List[np.ndarray],
+	trash_contours: List[np.ndarray]
+) -> np.ndarray:
+	"""
+	Creates a 3-channel BGR feature image for CNN training:
+	- Blue Channel = Cloth Area (cleaned background)
+	- Green Channel = Trash Mask
+	- Red Channel = Hair Mask
+	"""
+	# Create blank masks for hair and trash
+	mask_hair = np.zeros((h, w), dtype=np.uint8)
+	mask_trash = np.zeros((h, w), dtype=np.uint8)
+	
+	# Draw the approved contours (filled)
+	if hair_contours:
+		cv2.drawContours(mask_hair, hair_contours, -1, 255, cv2.FILLED)
+	if trash_contours:
+		cv2.drawContours(mask_trash, trash_contours, -1, 255, cv2.FILLED)
+	
+	# Merge into BGR: B=Cloth, G=Trash, R=Hair
+	output_image = cv2.merge((cloth_mask, mask_trash, mask_hair))
+	
+	# Resize to target size
+	output_resized = cv2.resize(output_image, TARGET_IMG_SIZE, interpolation=cv2.INTER_AREA)
+	
+	return output_resized
+
+
 def process_image(image_path: Path, lower_hsv: np.ndarray, upper_hsv: np.ndarray) -> np.ndarray | None:
 	bgr = cv2.imread(str(image_path))
 	if bgr is None:
@@ -137,13 +241,30 @@ def process_image(image_path: Path, lower_hsv: np.ndarray, upper_hsv: np.ndarray
 
 	# 1) Crop to cloth region using color mask
 	roi_bgr = crop_to_cloth_region(bgr, lower_hsv, upper_hsv, margin_ratio=0.06)
+	h, w = roi_bgr.shape[:2]
 
 	# 2) Convert to gray and enhance
 	gray = cv2.cvtColor(roi_bgr, cv2.COLOR_BGR2GRAY)
 	filtered = enhance_and_filter(gray)
 
-	# 3) Resize to target size
-	out = cv2.resize(filtered, TARGET_IMG_SIZE, interpolation=cv2.INTER_AREA)
+	# 3) Choose output mode
+	if OUTPUT_MODE == 'multichannel':
+		# NEW: Multi-channel approach with shape-based classification
+		# Create a cloth mask (inverted filtered to show cloth area)
+		cloth_mask = cv2.bitwise_not(filtered)
+		
+		# Find all contours in the filtered image
+		contours, _ = cv2.findContours(filtered, cv2.RETR_EXTERNAL, cv2.CHAIN_APPROX_SIMPLE)
+		
+		# Classify contours by shape
+		hair_contours, trash_contours = classify_contours_by_shape(contours, SHAPE_PARAMS)
+		
+		# Create multi-channel output
+		out = create_multichannel_output(h, w, cloth_mask, hair_contours, trash_contours)
+	else:
+		# Original: Single-channel grayscale output
+		out = cv2.resize(filtered, TARGET_IMG_SIZE, interpolation=cv2.INTER_AREA)
+	
 	return out
 
 
@@ -201,6 +322,9 @@ def main() -> None:
 		lower_hsv, upper_hsv = estimate_hsv_range_from_sample(sample)
 
 	print("Starting dataset preprocessing with cloth-aware zoom…")
+	print(f"Output mode:    {OUTPUT_MODE.upper()}")
+	if OUTPUT_MODE == 'multichannel':
+		print(f"  └─ Using shape-based classification (Hair vs Trash)")
 	print(f"Reading from:   {RAW_DATA_DIR}")
 	print(f"Saving maps to: {PROCESSED_DATA_DIR}")
 	print("-" * 30)
