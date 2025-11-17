@@ -1,190 +1,202 @@
+Below is your README rewritten **in English**, keeping **all technical content identical**, only translating and formatting it professionally.
+
+---
+
 # Sterile-Field Micro-Contaminant Detector (SF-MCD)
 
 **Project Status:** Proof-of-Concept
 
-This project is a novel computer vision solution designed to detect micro-contaminants on sterile surgical fields using a hybrid "Filter + CNN" architecture.
+This project proposes a computer vision solution for detecting micro-contaminants (hair, debris, particles) on sterile surgical drapes. It uses a hybrid system composed of an advanced filtering pipeline and a lightweight CNN capable of operating with a standard webcam.
 
-The primary goal is to create a system that can run on a simple webcam and alert a surgical team if a sterile drape is compromised by a foreign object, such as a single hair, a fiber, or other small particles.
+---
 
-## The Core Problem: High-Noise, Low-Signal
+## 1. Core Problem: Low-Signal Target in a High-Noise Environment
 
-In a medical environment, sterile fields are critical for preventing Surgical Site Infections (SSIs). A single contaminant, like a hair, can compromise the field.
+Detecting contaminants on a sterile field involves two critical challenges:
 
-This is a difficult computer vision problem for two reasons:
+**Low-Signal (Target):**
 
-1.  **Low-Signal Target:** The contaminant (a single hair or a tiny scrap) is extremely small and has very low contrast against the background.
-2.  **High-Noise Background:** The "sterile" drape itself is not a uniform surface. It is covered in wrinkles, folds, and shadows from operating room lights.
+* The contaminant (hair, crumb, particle) is extremely small and low contrast.
 
-A simple Convolutional Neural Network (CNN) or a standard edge detector (like Sobel or Canny) will fail. The network will incorrectly learn that the "wrinkles" and "shadows"—which are much stronger and more frequent signals—are the features to detect, leading to an unusable rate of false positives.
+**High-Noise (Background):**
 
-**The solution is not to _find the hair_, but to _suppress the background_.**
+* Shadows caused by folds in the surgical drape.
+* Ambient lighting variations.
+* High-contrast printed logos.
+* Texture and chromatic variation of the material.
 
-## How It Works: The Filter-First Architecture
+A conventional approach (grayscale preprocessing or a standard CNN) tends to confuse shadows and printed markings with contaminants, producing unacceptable false-positive rates.
+The solution requires removing the noise before presenting the image to the model.
 
-This project solves the "noise" problem by _never_ showing the original image to the CNN. Instead, it uses a classical image processing filter to create an "artifact map" that isolates the contaminant. The CNN is then trained _only_ on this map.
+---
 
-This hybrid approach forces the model to learn the correct features.
+## 2. Overview of the “Filter-First” Pipeline
 
-### Step 1: The "Difference of Gaussians" (DoG) Pre-processing Filter
+The system does not feed the original image to the CNN. Instead, it constructs a three-channel feature map produced through a five-stage pipeline:
 
-The key insight is that the "noise" (wrinkles, shadows) and the "signal" (hair, particles) exist in different spatial frequencies.
+1. Conversion to HSV
+2. Logical masks (“mask algebra”)
+3. Shape analysis for heuristic classification
+4. Construction of the multichannel map
+5. Training a simple CNN on the generated map
 
-- **Wrinkles/Shadows:** Low-frequency (broad, soft, blurry shapes).
-- **Hair/Particles:** High-frequency (thin, sharp, fine-detailed lines and specks).[1]
+---
 
-We use a **Difference of Gaussians (DoG)** filter to act as a band-pass filter, separating these frequencies. This technique is also a computationally efficient approximation of the Laplacian of Gaussian (LoG) operator, which is excellent for blob and edge detection.
+## 3. Pipeline Stages
 
-The process is as follows:
+### 3.1 HSV Conversion
 
-1.  **Read Image:** The $1920\times1080$ color frame is read from the webcam.
-2.  **Grayscale:** The image is converted to grayscale.
-3.  **Create Broad Blur:** We apply a large Gaussian blur (e.g., $25\times25$ kernel). This "blurs out" the fine details of the hair and particles, leaving _only_ the low-frequency wrinkles and shadows.
-4.  **Create Fine Blur:** We apply a very small Gaussian blur (e.g., $3\times3$ kernel). This removes tiny pixel noise but preserves the hair, particles, _and_ the wrinkles.
-5.  **Subtract:** We subtract the `Broad Blur` image from the `Fine Blur` image. This subtraction cancels out the common low-frequency information (the wrinkles/shadows), leaving _only_ the high-frequency details.
-6.  **Threshold & Normalize:** The resulting "artifact map" is thresholded to make the contaminants stand out as white pixels on a black background.
+The captured BGR image is converted to HSV to separate the color component (Hue) from the brightness component (Value).
+This separation allows the system to distinguish drape color from shadows, glare, and white printed logos.
 
-**Visualizing the Process:**
+---
 
-| Original Image (High-Noise)                                                                                                                  | DoG Filter Output (High-Signal) |
-| :------------------------------------------------------------------------------------------------------------------------------------------- | :------------------------------ |
-| \!([httpsfakesite.com/wrinkled_drape.png](https://www.google.com/search?q=https://httpsfakesite.com/wrinkled_drape.png))                     |                                 |
-| **Result:** A _sterile_ drape becomes a (mostly) black image. A _contaminated_ drape becomes a black image with clear white specks or lines. |
+### 3.2 Mask Algebra
 
-### Step 2: The Simple CNN Classifier
+Binary masks are generated using `cv2.inRange()`:
 
-The "complexity" is now handled. The CNN's job is simple. It is _not_ trained on the original photos, but _exclusively_ on the `DoG_Map` outputs from Step 1.
+* `mask_cloth`: identifies pixels matching the characteristic hue of the drape (blue, green, or pink).
+* `mask_logo`: identifies white pixels (low saturation, high value).
+* `mask_shadows_and_hair`: identifies dark regions (low value).
 
-- **Architecture:** A lightweight, custom CNN (e.g., 4-5 convolutional layers followed by a dense classifier). This avoids the need for heavy, pre-trained models.
-- **Input:** A $128\times128\times1$ (grayscale) `DoG_Map` image.
-- **Output:** A 4-class softmax classification:
-  1.  `sterile`
-  2.  `contaminant_hair`
-  3.  `contaminant_trash`
-  4.  `contaminant_both`
-
-The network learns to classify the _patterns_ of the artifacts. A long, thin line is `hair` [2], a small cluster of specks is `trash`, and a black image is `sterile`.
-
-## Project Structure
+To remove the logo from the cloth mask:
 
 ```
-/sterile-field-detector
+mask_cloth_clean = cv2.subtract(mask_cloth, mask_logo)
+```
+
+---
+
+### 3.3 Shape Analysis
+
+The `mask_shadows_and_hair` mask contains both contaminants and shadows.
+Geometric criteria are applied using `cv2.findContours()`:
+
+* **Hair:** An ellipse is fitted using `cv2.fitEllipse`; if eccentricity > 4.0, the blob is classified as hair.
+* **Trash:** Solidity (`area / convexHull`) is computed; if solidity > 0.85, the blob is classified as trash.
+* **Shadow:** Any region that is large, low-solidity, or not elongated is discarded as shadow.
+
+---
+
+### 3.4 Construction of the Multichannel Map
+
+Three clean masks are generated and merged using `cv2.merge()`:
+
+* Blue Channel: drape area (`mask_cloth_clean`)
+* Green Channel: trash (`mask_trash_final`)
+* Red Channel: hair (`mask_hair_final`)
+
+The CNN receives this structured three-channel feature map instead of the original image.
+
+---
+
+### 3.5 CNN Training
+
+The model is trained exclusively on the multichannel maps.
+Its task is reduced to detecting the presence of red or green regions over a blue background, which is far more stable and robust than learning directly from the original image.
+
+---
+
+## 4. Project Structure
+
+```
+Sterile-Field-Micro-Contaminant-Detector
 │
-├── 01_data_collection/
-│   ├── capture_video.py        # Simple script to record.mp4 files for each class.
-│   └── extract_frames.py       # Converts videos to frames (e.g., 4fps) and saves to /dataset_raw.
+├── src/
+│   ├── data_collection/
+│   │   ├── capture_video.py          # 1. Records .mp4 videos
+│   │   └── extract_frames.py         # 2. Extracts frames from videos
+│   │
+│   ├── filtering/
+│   │   ├── build_dataset.py          # 3. Advanced HSV + shape pipeline
+│   │   └── processed_multichannel/   #    Output: multichannel maps
+│   │
+│   ├── training/
+│   │   ├── model.py                  # 4. Simple CNN architecture
+│   │   ├── train.py                  # 5. Model training
+│   │   ├── sterile_field_model.keras #    Final trained model
+│   │   └── training_history.png      #    Training performance plot
 │
-├── 02_preprocessing/
-│   ├── build_dataset.py        # Applies the DoG filter to /dataset_raw and saves maps to /dataset_processed.
-│
-├── 03_training/
-│   ├── model.py                # Defines the simple CNN architecture.
-│   ├── train.py                # Loads processed data and trains the model.
-│   └── sterile_model.h5        # The final trained model weights.
-│
-├── 04_inference/
-│   └── run_live_detector.py    # Runs the full pipeline (capture -> filter -> CNN) on a live webcam feed.
-│
-└── README.md                   # You are here.
+├── README.md
+└── .gitignore
 ```
 
-## Dataset Generation (Zero-Cost)
+---
 
-The dataset can be generated in under 15 minutes using a webcam and basic household items.
+## 5. Usage Instructions
 
-**Materials:**
+### 5.1 Data Collection
 
-- **Webcam:** Any standard webcam.
-- **Sterile Drape:** A blue paper shop towel, a piece of craft paper, or any solid-color (blue/green) cloth that wrinkles easily.
-- **Contaminants:**
-  - `hair`: A single human hair.
-  - `trash`: A few tiny scraps of paper, salt/sugar granules, or breadcrumbs.
-- **Environment:** A desk lamp to create harsh shadows and wrinkles.
-
-**Process:**
-
-1.  Set up your "drape" and wrinkle it. Position the lamp to create strong shadows.
-2.  Run `01_data_collection/capture_video.py`.
-3.  Record 5-10 seconds of video for each of the four classes:
-    - **Class 1 (`sterile`):** Record the drape with only wrinkles and shadows. Move the camera slightly.
-    - **Class 2 (`contaminant_hair`):** Drop the hair onto the drape. Record it in different positions.
-    - **Class 3 (`contaminant_trash`):** Place the small scraps on the drape. Record.
-    - **Class 4 (`contaminant_both`):** Add both the hair and the scraps. Record.
-4.  Run `01_data_collection/extract_frames.py`. This script will pull \~2-4 frames per second from your videos and create a raw dataset of 1,000-2,000 images, automatically sorted into `sterile/`, `hair/`, etc.
-
-## Dataset: Download and Frame Extraction (Automated)
-
-If you already have the videos in Google Drive (see link in `dataset/dataset_builder.py`), you can download them and extract frames in one step.
-
-What the script does:
-
-- Downloads the Drive folder into `dataset/download/`.
-- Finds all videos and infers the class from the filename keywords: `sterile`, `hair`, `trash`, `both` (otherwise `unknown`).
-- Computes how many frames to extract per video to reach ~1000 images per class, using each video’s duration:
-  - For a class, let T be the total duration (seconds) of all its videos.
-  - Frames-per-second rate r = 1000 / T.
-  - For each video with duration d, frames_for_video = ceil(r × d).
-- Extracts frames evenly across each video timeline and writes them to `dataset/frames/<video-name>/` where `<video-name>` is the video filename slug in lowercase with hyphens.
-
-Example folder name for a video named `Trash Hair.MP4` becomes:
+Run to record videos:
 
 ```
-dataset/frames/trash-hair/
-  frame_00000.png
-  frame_00001.png
-  ...
+python src/data_collection/capture_video.py
 ```
 
-Run it:
+Then extract frames:
 
-```bash
-# Install dependencies once
-pip install -r requirements.txt
-
-# Download from Drive and extract frames
-python dataset/dataset_builder.py
+```
+python src/data_collection/extract_frames.py
 ```
 
-Notes:
+---
 
-- The script targets ~1000 frames per class. If a class has very short total duration, the number may be slightly lower due to available frames.
-- Videos without the keywords fall under `unknown` and get a small default (≈250) frames total distributed proportionally to duration.
+### 5.2 Preprocessing (Filtering Pipeline)
 
-## How to Run
+Generate the multichannel maps:
 
-**1. Create the Dataset:**
-You can either follow **Dataset Generation** above or use the automated script:
-
-```bash
-pip install -r requirements.txt
-python dataset/dataset_builder.py
+```
+python src/filtering/build_dataset.py
 ```
 
-This will populate `dataset/frames/<video-name>/` with extracted images.
+Output is stored in:
 
-**2. Pre-process the Data:**
-Run the DoG filter script. This converts all raw frames into artifact maps.
-
-```bash
-python 02_preprocessing/build_dataset.py
+```
+src/filtering/processed_multichannel/
 ```
 
-**3. Train the Model:**
-Run the training script. This will load the processed maps and train the simple CNN.
+---
 
-```bash
-python 03_training/train.py
+### 5.3 CNN Training
+
+```
+python src/training/train.py
 ```
 
-**4. Run the Live Detector:**
-Run the inference script to see the live results from your webcam\!
+The resulting model is saved as:
 
-```bash
-python 04_inference/run_live_detector.py
+```
+src/training/sterile_field_model.keras
 ```
 
-## Technologies Used
+---
 
-- **Python 3.10+**
-- **OpenCV (`opencv-python`)**: Used for all image capture, video processing, and classical filtering (Grayscale, GaussianBlur, Subtract, Threshold).
-- **TensorFlow / Keras:** Used to build, train, and run the simple CNN classifier.
-- **Numpy:** For numerical operations.
+### 5.4 Real-Time Inference (Future Work)
+
+A future `inference.py` script will integrate:
+
+* Webcam capture
+* HSV + shape-filtering pipeline
+* Inference using the trained model
+
+---
+
+## 6. Current Project Status
+
+| Component                      | Status   |
+| ------------------------------ | -------- |
+| Data capture and extraction    | Complete |
+| HSV pipeline + shape filtering | Complete |
+| Multichannel map generation    | Complete |
+| CNN training                   | Complete |
+| Real-time inference            | Pending  |
+
+---
+
+If you want, I can also generate:
+
+* A fully polished version suitable for publication
+* A documentation-style version for medical device approval workflows
+* A shorter or extended version for GitHub
+
+Just tell me what tone or format you prefer.
