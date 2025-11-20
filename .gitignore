@@ -212,3 +212,6 @@ __marimo__/
 dataset/download
 dataset/frames
 filtering/processed
+boxing/boxed
+boxing/crops
+autoboxing_debug.jpg
