@@ -16,14 +16,14 @@ Detecting contaminants on a sterile field involves two critical challenges:
 
 **Low-Signal (Target):**
 
-* The contaminant (hair, crumb, particle) is extremely small and low contrast.
+- The contaminant (hair, crumb, particle) is extremely small and low contrast.
 
 **High-Noise (Background):**
 
-* Shadows caused by folds in the surgical drape.
-* Ambient lighting variations.
-* High-contrast printed logos.
-* Texture and chromatic variation of the material.
+- Shadows caused by folds in the surgical drape.
+- Ambient lighting variations.
+- High-contrast printed logos.
+- Texture and chromatic variation of the material.
 
 A conventional approach (grayscale preprocessing or a standard CNN) tends to confuse shadows and printed markings with contaminants, producing unacceptable false-positive rates.
 The solution requires removing the noise before presenting the image to the model.
@@ -55,9 +55,9 @@ This separation allows the system to distinguish drape color from shadows, glare
 
 Binary masks are generated using `cv2.inRange()`:
 
-* `mask_cloth`: identifies pixels matching the characteristic hue of the drape (blue, green, or pink).
-* `mask_logo`: identifies white pixels (low saturation, high value).
-* `mask_shadows_and_hair`: identifies dark regions (low value).
+- `mask_cloth`: identifies pixels matching the characteristic hue of the drape (blue, green, or pink).
+- `mask_logo`: identifies white pixels (low saturation, high value).
+- `mask_shadows_and_hair`: identifies dark regions (low value).
 
 To remove the logo from the cloth mask:
 
@@ -72,9 +72,9 @@ mask_cloth_clean = cv2.subtract(mask_cloth, mask_logo)
 The `mask_shadows_and_hair` mask contains both contaminants and shadows.
 Geometric criteria are applied using `cv2.findContours()`:
 
-* **Hair:** An ellipse is fitted using `cv2.fitEllipse`; if eccentricity > 4.0, the blob is classified as hair.
-* **Trash:** Solidity (`area / convexHull`) is computed; if solidity > 0.85, the blob is classified as trash.
-* **Shadow:** Any region that is large, low-solidity, or not elongated is discarded as shadow.
+- **Hair:** An ellipse is fitted using `cv2.fitEllipse`; if eccentricity > 4.0, the blob is classified as hair.
+- **Trash:** Solidity (`area / convexHull`) is computed; if solidity > 0.85, the blob is classified as trash.
+- **Shadow:** Any region that is large, low-solidity, or not elongated is discarded as shadow.
 
 ---
 
@@ -82,9 +82,9 @@ Geometric criteria are applied using `cv2.findContours()`:
 
 Three clean masks are generated and merged using `cv2.merge()`:
 
-* Blue Channel: drape area (`mask_cloth_clean`)
-* Green Channel: trash (`mask_trash_final`)
-* Red Channel: hair (`mask_hair_final`)
+- Blue Channel: drape area (`mask_cloth_clean`)
+- Green Channel: trash (`mask_trash_final`)
+- Red Channel: hair (`mask_hair_final`)
 
 The CNN receives this structured three-channel feature map instead of the original image.
 
@@ -169,15 +169,59 @@ The resulting model is saved as:
 src/training/sterile_field_model.keras
 ```
 
+### 5.4 Binary Trash vs Safe Classification (Current Branch)
+
+This branch adds a lightweight binary classification workflow to label crops as either `Trash` or `Safe` using a simple CNN.
+
+1. Build the binary dataset from multi-class folders produced by boxing:
+
+```
+python dataset/prepare_binary_dataset.py --source crops
+```
+
+Options:
+
+- Use `--source boxed` to pull from `boxing/boxed` instead of `boxing/crops`.
+- Add `--link` to create symlinks instead of copying (saves disk space).
+- Override mapping (defaults: Trash = `trash` + `trash-hair`, Safe = `clean` + `hair`):
+
+```
+python dataset/prepare_binary_dataset.py --trash trash trash-hair --safe clean hair
+```
+
+2. Train the binary CNN:
+
+```
+python cnn/cnn-classifier.py
+```
+
+This writes `trash_classifier_model.h5` and displays training curves. The console prints the folder-to-label mapping (`{'Safe': 0, 'Trash': 1}` expected) so you can confirm correct labeling.
+
+Dataset folder produced:
+
+```
+CNN_Training_Data/
+	Trash/
+	Safe/
+```
+
+Ensure `tensorflow`, `matplotlib`, and `pillow` are installed (they were added to `requirements.txt`). Install/update dependencies:
+
+```
+pip install -r requirements.txt
+```
+
+You can regenerate the dataset any time if new crops are added.
+
 ---
 
 ### 5.4 Real-Time Inference (Future Work)
 
 A future `inference.py` script will integrate:
 
-* Webcam capture
-* HSV + shape-filtering pipeline
-* Inference using the trained model
+- Webcam capture
+- HSV + shape-filtering pipeline
+- Inference using the trained model
 
 ---
 
@@ -195,8 +239,8 @@ A future `inference.py` script will integrate:
 
 If you want, I can also generate:
 
-* A fully polished version suitable for publication
-* A documentation-style version for medical device approval workflows
-* A shorter or extended version for GitHub
+- A fully polished version suitable for publication
+- A documentation-style version for medical device approval workflows
+- A shorter or extended version for GitHub
 
 Just tell me what tone or format you prefer.
