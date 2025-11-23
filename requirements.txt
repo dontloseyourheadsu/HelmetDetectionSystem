@@ -5,3 +5,4 @@ tqdm>=4.66.0
 tensorflow>=2.16.0
 matplotlib>=3.8.0
 pillow>=10.3.0
+keras>=3.0.0
