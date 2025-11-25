@@ -1,246 +1,181 @@
-Below is your README rewritten **in English**, keeping **all technical content identical**, only translating and formatting it professionally.
-
----
-
 # Sterile-Field Micro-Contaminant Detector (SF-MCD)
 
-**Project Status:** Proof-of-Concept
+This project implements an AI system to detect micro-contaminants (hair and trash) on a sterile field (tablecloth). It explores multiple approaches including Autoencoders for anomaly detection, a CNN Classifier, and a Roboflow workflow.
 
-This project proposes a computer vision solution for detecting micro-contaminants (hair, debris, particles) on sterile surgical drapes. It uses a hybrid system composed of an advanced filtering pipeline and a lightweight CNN capable of operating with a standard webcam.
+## Project Pipeline
 
----
-
-## 1. Core Problem: Low-Signal Target in a High-Noise Environment
-
-Detecting contaminants on a sterile field involves two critical challenges:
-
-**Low-Signal (Target):**
-
-- The contaminant (hair, crumb, particle) is extremely small and low contrast.
-
-**High-Noise (Background):**
-
-- Shadows caused by folds in the surgical drape.
-- Ambient lighting variations.
-- High-contrast printed logos.
-- Texture and chromatic variation of the material.
-
-A conventional approach (grayscale preprocessing or a standard CNN) tends to confuse shadows and printed markings with contaminants, producing unacceptable false-positive rates.
-The solution requires removing the noise before presenting the image to the model.
-
----
-
-## 2. Overview of the “Filter-First” Pipeline
-
-The system does not feed the original image to the CNN. Instead, it constructs a three-channel feature map produced through a five-stage pipeline:
-
-1. Conversion to HSV
-2. Logical masks (“mask algebra”)
-3. Shape analysis for heuristic classification
-4. Construction of the multichannel map
-5. Training a simple CNN on the generated map
-
----
-
-## 3. Pipeline Stages
-
-### 3.1 HSV Conversion
-
-The captured BGR image is converted to HSV to separate the color component (Hue) from the brightness component (Value).
-This separation allows the system to distinguish drape color from shadows, glare, and white printed logos.
-
----
-
-### 3.2 Mask Algebra
-
-Binary masks are generated using `cv2.inRange()`:
-
-- `mask_cloth`: identifies pixels matching the characteristic hue of the drape (blue, green, or pink).
-- `mask_logo`: identifies white pixels (low saturation, high value).
-- `mask_shadows_and_hair`: identifies dark regions (low value).
-
-To remove the logo from the cloth mask:
-
-```
-mask_cloth_clean = cv2.subtract(mask_cloth, mask_logo)
+```mermaid
+graph TD
+    A[Dataset Download] --> B[Frame Extraction]
+    B --> C[Preprocessing]
+    C --> D{Model Selection}
+    D -->|Unsupervised| E[Autoencoder]
+    D -->|Supervised| F[CNN Classifier]
+    D -->|Cloud API| G[Roboflow Workflow]
+    E --> H[Anomaly Detection]
+    F --> I[Classification]
+    G --> J[Object Detection]
 ```
 
----
+## 1. Dataset & Preprocessing
 
-### 3.3 Shape Analysis
+The dataset consists of video frames extracted from recordings of sterile fields.
 
-The `mask_shadows_and_hair` mask contains both contaminants and shadows.
-Geometric criteria are applied using `cv2.findContours()`:
+- **Download**: Videos are downloaded from Google Drive.
+- **Extraction**: Frames are extracted at regular intervals.
+- **Preprocessing**:
 
-- **Hair:** An ellipse is fitted using `cv2.fitEllipse`; if eccentricity > 4.0, the blob is classified as hair.
-- **Trash:** Solidity (`area / convexHull`) is computed; if solidity > 0.85, the blob is classified as trash.
-- **Shadow:** Any region that is large, low-solidity, or not elongated is discarded as shadow.
+  - **TopHat Morphological Operation**: We use morphological TopHat transforms to isolate small, bright elements (crumbs) and dark elements (hair) from the background.
+  - **Noise Filtering**: A size-based threshold is applied to the TopHat result. Small blobs are kept as potential contaminants, while larger blobs (like logos or text on the sterile field) are masked out.
+  - **Contrast Enhancement**: The isolated features are recombined with a neutral background to create high-contrast images for the models.
 
----
+  ```mermaid
+  graph LR
+      A[Input Image] --> B[Morphological TopHat]
+      B --> C{Size Thresholding}
+      C -->|Small Area| D["Keep (Crumbs/Hair)"]
+      C -->|Large Area| E["Remove (Logos/Noise)"]
+      D --> F[Contrast Enhancement]
+      F --> G[Output Image]
+  ```
 
-### 3.4 Construction of the Multichannel Map
+## 2. Models & Results
 
-Three clean masks are generated and merged using `cv2.merge()`:
+### A. Autoencoder (Anomaly Detection)
 
-- Blue Channel: drape area (`mask_cloth_clean`)
-- Green Channel: trash (`mask_trash_final`)
-- Red Channel: hair (`mask_hair_final`)
+The autoencoder is trained exclusively on "clean" sterile field images to learn the normal texture. When it encounters an anomaly (hair or trash), it fails to reconstruct it accurately, resulting in a high reconstruction error (MSE). We set a threshold based on the training loss; any image exceeding this error is flagged as contaminated.
 
-The CNN receives this structured three-channel feature map instead of the original image.
-
----
-
-### 3.5 CNN Training
-
-The model is trained exclusively on the multichannel maps.
-Its task is reduced to detecting the presence of red or green regions over a blue background, which is far more stable and robust than learning directly from the original image.
-
----
-
-## 4. Project Structure
-
-```
-Sterile-Field-Micro-Contaminant-Detector
-│
-├── src/
-│   ├── data_collection/
-│   │   ├── capture_video.py          # 1. Records .mp4 videos
-│   │   └── extract_frames.py         # 2. Extracts frames from videos
-│   │
-│   ├── filtering/
-│   │   ├── build_dataset.py          # 3. Advanced HSV + shape pipeline
-│   │   └── processed_multichannel/   #    Output: multichannel maps
-│   │
-│   ├── training/
-│   │   ├── model.py                  # 4. Simple CNN architecture
-│   │   ├── train.py                  # 5. Model training
-│   │   ├── sterile_field_model.keras #    Final trained model
-│   │   └── training_history.png      #    Training performance plot
-│
-├── README.md
-└── .gitignore
+```mermaid
+graph TD
+    Input["Input 128x128x1"] --> E1["Conv2D 32"]
+    E1 --> E2["Conv2D 64"]
+    E2 --> E3["Conv2D 128"]
+    E3 --> Latent["Latent Space 16x16x128"]
+    Latent --> D1["ConvTranspose 128"]
+    D1 --> D2["ConvTranspose 64"]
+    D2 --> D3["ConvTranspose 32"]
+    D3 --> Out["Conv2D 1 (Sigmoid)"]
+    Out --> Recon["Reconstructed Image"]
 ```
 
----
+![Autoencoder Reconstruction](results/autoencoder.png)
+_Figure: Initial Autoencoder reconstruction showing input vs. output._
 
-## 5. Usage Instructions
+**Initial Autoencoder Results:**
 
-### 5.1 Data Collection
+- **Mean Loss**: 0.0402 | **Std Dev**: 0.0057
+- **Anomaly Threshold**: 0.0517
+- **Performance**:
+  - Clean: 100% (Specificity)
+  - Hair: 62% (Recall)
+  - Trash: 18% (Recall)
+  - Trash-Hair: 0% (Recall)
 
-Run to record videos:
+**Improved Autoencoder Results:**
 
-```
-python src/data_collection/capture_video.py
-```
+![Improved Autoencoder](results/autoencoder-improved.png)
+_Figure: Improved Autoencoder reconstruction._
 
-Then extract frames:
+- **Mean Loss**: 0.0253 | **Std Dev**: 0.0045
+- **Anomaly Threshold**: 0.0321
+- **Performance**:
+  - Clean: 100%
+  - Hair: 81%
+  - Trash: 51%
+  - Trash-Hair: 6%
 
-```
-python src/data_collection/extract_frames.py
-```
+### B. CNN Classifier (Supervised Learning)
 
----
+We trained a custom Convolutional Neural Network (CNN) to classify 128x128 grayscale images into four specific categories: **Clean, Hair, Trash, and Trash-Hair**.
 
-### 5.2 Preprocessing (Filtering Pipeline)
+**Model Architecture:**
+The model uses a standard architecture for image classification:
 
-Generate the multichannel maps:
+1.  **Convolutional Blocks**: Three blocks of Conv2D layers (32, 64, 128 filters) to extract spatial features (edges, textures), followed by MaxPooling to reduce dimensionality.
+2.  **Dense Layers**: A fully connected layer (128 units) to interpret features, with Dropout (0.5) to prevent overfitting.
+3.  **Output**: A Softmax layer for the 4 classes.
 
-```
-python src/filtering/build_dataset.py
-```
-
-Output is stored in:
-
-```
-src/filtering/processed_multichannel/
-```
-
----
-
-### 5.3 CNN Training
-
-```
-python src/training/train.py
-```
-
-The resulting model is saved as:
-
-```
-src/training/sterile_field_model.keras
-```
-
-### 5.4 Binary Trash vs Safe Classification (Current Branch)
-
-This branch adds a lightweight binary classification workflow to label crops as either `Trash` or `Safe` using a simple CNN.
-
-1. Build the binary dataset from multi-class folders produced by boxing:
-
-```
-python dataset/prepare_binary_dataset.py --source crops
+```mermaid
+graph TD
+    Input[Input 128x128x1] --> C1[Conv2D 32]
+    C1 --> P1[MaxPooling]
+    P1 --> C2[Conv2D 64]
+    C2 --> P2[MaxPooling]
+    P2 --> C3[Conv2D 128]
+    C3 --> P3[MaxPooling]
+    P3 --> F[Flatten]
+    F --> D1[Dense 128 + Dropout]
+    D1 --> Out[Output 4 Classes]
 ```
 
-Options:
+**Training Results (15 Epochs):**
 
-- Use `--source boxed` to pull from `boxing/boxed` instead of `boxing/crops`.
-- Add `--link` to create symlinks instead of copying (saves disk space).
-- Override mapping (defaults: Trash = `trash` + `trash-hair`, Safe = `clean` + `hair`):
+- **Training Accuracy**: ~98.3%
+- **Validation Accuracy**: ~97.4%
+- **Loss**: Low (0.05 - 0.08)
 
-```
-python dataset/prepare_binary_dataset.py --trash trash trash-hair --safe clean hair
-```
+![Training Graph](results/cnn-classifier-success-error-graph.png)
+_Figure: Training and Validation Accuracy/Loss over epochs._
 
-2. Train the binary CNN:
+![CNN Predictions](results/cnn-classifier-image-evals-examples.png)
+_Figure: Sample predictions on the validation set._
 
-```
-python cnn/cnn-classifier.py
-```
+### C. Roboflow-Rapid (SAM-Powered)
 
-This writes `trash_classifier_model.h5` and displays training curves. The console prints the folder-to-label mapping (`{'Safe': 0, 'Trash': 1}` expected) so you can confirm correct labeling.
+We utilized Roboflow's rapid workflow tools, which leverage the **Segment Anything Model (SAM)** in the backend. This approach allows for zero-shot detection by simply prompting the model with text descriptions of the targets.
 
-Dataset folder produced:
+For our case, we used the prompts:
 
-```
-CNN_Training_Data/
-	Trash/
-	Safe/
-```
+- **"White dots"**: To identify small trash or crumbs.
+- **"Thin black lines"**: To identify hair strands.
 
-Ensure `tensorflow`, `matplotlib`, and `pillow` are installed (they were added to `requirements.txt`). Install/update dependencies:
+This method avoids the need for training a custom model from scratch, relying instead on SAM's ability to understand geometric and visual concepts from text.
 
-```
-pip install -r requirements.txt
-```
+![Roboflow Detection](results/roboflow-image-example.png)
+_Figure: Example of detection using Roboflow workflow._
 
-You can regenerate the dataset any time if new crops are added.
+**Evaluation Results (Last 100 images per class):**
 
----
+- **Clean**:
+  - Avg White Dots: 0.00
+  - Avg Black Lines: 1.13
+- **Hair**:
+  - Avg White Dots: 0.00
+  - Avg Black Lines: 0.03
+- **Trash**:
+  - Avg White Dots: 1.65
+  - Avg Black Lines: 0.65
+- **Trash-Hair**:
+  - Avg White Dots: 0.00
+  - Avg Black Lines: 1.70
 
-### 5.4 Real-Time Inference (Future Work)
+**Observations:**
 
-A future `inference.py` script will integrate:
+- **Trash Detection**: The model successfully detects "White dots" in the Trash class (Avg 1.65) compared to Clean/Hair (0.00).
+- **Hair Detection**: The "Thin black lines" detection is inconsistent. While "Trash-Hair" shows the highest count (1.70), the pure "Hair" class shows very few (0.03), and surprisingly, "Clean" images show some false positives (1.13). This suggests the "Thin black lines" prompt or model might need refinement to distinguish actual hair from background artifacts.
 
-- Webcam capture
-- HSV + shape-filtering pipeline
-- Inference using the trained model
+## Usage
 
----
+### Prerequisites
 
-## 6. Current Project Status
+- Python 3.x
+- Install dependencies: `pip install -r requirements.txt`
 
-| Component                      | Status   |
-| ------------------------------ | -------- |
-| Data capture and extraction    | Complete |
-| HSV pipeline + shape filtering | Complete |
-| Multichannel map generation    | Complete |
-| CNN training                   | Complete |
-| Real-time inference            | Pending  |
+### Running the Pipeline
 
----
+1. **Download & Build Dataset**:
+   ```bash
+   python dataset/dataset_builder.py
+   ```
+2. **Apply Filters**:
+   ```bash
+   python filtering/apply_filters-template_matching.py
+   ```
+3. **Train Classifier**:
+   ```bash
+   python cnn/cnn-classifier.py
+   ```
 
-If you want, I can also generate:
+## Notebook
 
-- A fully polished version suitable for publication
-- A documentation-style version for medical device approval workflows
-- A shorter or extended version for GitHub
-
-Just tell me what tone or format you prefer.
+A complete Jupyter Notebook `Sterile-Field-Micro-Contaminant-Detector.ipynb` is provided to run the entire pipeline in Google Colab or locally.

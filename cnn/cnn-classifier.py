@@ -1,3 +1,9 @@
+"""CNN Classifier for Contaminant Detection.
+
+This script trains a Convolutional Neural Network (CNN) to classify images into 4 categories:
+Clean, Hair, Trash, and Trash-Hair.
+"""
+
 import os
 import pathlib
 import matplotlib.pyplot as plt
@@ -9,11 +15,9 @@ from tensorflow.keras import layers, models
 BATCH_SIZE = 32
 IMG_HEIGHT = 128
 IMG_WIDTH = 128
-EPOCHS = 15  # How many times to go through the dataset
+EPOCHS = 15
 
 # --- 1. SETUP PATHS ---
-# Based on your screenshot, this script is in /cnn/
-# and images are in /filtering/processed/
 current_dir = pathlib.Path(__file__).parent.resolve()
 data_dir = current_dir.parent / "filtering" / "processed"
 
@@ -24,14 +28,13 @@ if not data_dir.exists():
     exit()
 
 # --- 2. LOAD DATASET ---
-# This automatically reads subfolders (clean, hair, trash, trash-hair) as classes
 print("Loading Training Data...")
 train_ds = tf.keras.utils.image_dataset_from_directory(
     data_dir,
-    validation_split=0.2,    # Use 20% of images to test accuracy while training
+    validation_split=0.2,
     subset="training",
     seed=123,
-    color_mode='grayscale',  # We are using your filtered grayscale images
+    color_mode='grayscale',
     image_size=(IMG_HEIGHT, IMG_WIDTH),
     batch_size=BATCH_SIZE
 )
@@ -55,7 +58,7 @@ AUTOTUNE = tf.data.AUTOTUNE
 train_ds = train_ds.cache().shuffle(1000).prefetch(buffer_size=AUTOTUNE)
 val_ds = val_ds.cache().prefetch(buffer_size=AUTOTUNE)
 
-# --- 3. BUILD THE MODEL (Approach 1) ---
+# --- 3. BUILD THE MODEL ---
 num_classes = len(class_names)
 
 model = models.Sequential([
@@ -77,7 +80,7 @@ model = models.Sequential([
     # Flatten and Dense Layers
     layers.Flatten(),
     layers.Dense(128, activation='relu'),
-    layers.Dropout(0.5), # Prevents memorization
+    layers.Dropout(0.5),
     layers.Dense(num_classes) # Output layer
 ])
 
@@ -114,8 +117,30 @@ plt.plot(epochs_range, loss, label='Training Loss')
 plt.plot(epochs_range, val_loss, label='Validation Loss')
 plt.legend(loc='upper right')
 plt.title('Training and Validation Loss')
+plt.savefig('results/training_graph.png')
 plt.show()
 
-# --- 6. SAVE THE MODEL ---
+# --- 6. EVALUATION & VISUALIZATION ---
+print("Evaluating on Validation Set...")
+# Get a batch of validation images
+image_batch, label_batch = next(iter(val_ds))
+predictions = model.predict(image_batch)
+predicted_labels = np.argmax(predictions, axis=1)
+
+plt.figure(figsize=(10, 10))
+for i in range(9):
+    ax = plt.subplot(3, 3, i + 1)
+    plt.imshow(image_batch[i].numpy().astype("uint8"), cmap='gray')
+    
+    true_label = class_names[label_batch[i]]
+    pred_label = class_names[predicted_labels[i]]
+    
+    color = 'green' if true_label == pred_label else 'red'
+    
+    plt.title(f"True: {true_label}\nPred: {pred_label}", color=color)
+    plt.axis("off")
+plt.show()
+
+# --- 7. SAVE THE MODEL ---
 model.save('contamination_classifier.keras')
 print("Model saved as contamination_classifier.keras")

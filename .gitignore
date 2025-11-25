@@ -209,6 +209,8 @@ marimo/_static/
 marimo/_lsp/
 __marimo__/
 
+.venv_eval
+
 dataset/download
 dataset/frames
 filtering/processed

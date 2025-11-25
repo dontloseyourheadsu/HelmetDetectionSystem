@@ -1,13 +1,23 @@
+"""Roboflow Dataset Uploader.
+
+This script uploads processed images to a Roboflow project.
+"""
+
 import os
 from pathlib import Path
 from roboflow import Roboflow
 from tqdm import tqdm
+from dotenv import load_dotenv
+
+# Load environment variables
+load_dotenv()
 
 # Initialize the Roboflow object with your API key
-rf = Roboflow(api_key="4n1r1hgpHwXxLsq2yrE9")
+api_key = os.getenv("ROBOFLOW_API_KEY")
+if not api_key:
+    raise ValueError("ROBOFLOW_API_KEY not found in environment variables")
 
-# Retrieve your current workspace and project name
-# print(rf.workspace())
+rf = Roboflow(api_key=api_key)
 
 # Specify the project for upload
 workspaceId = 'feister'
@@ -18,7 +28,8 @@ project = rf.workspace(workspaceId).project(projectId)
 PROCESSED_DIR = Path(__file__).parent / "processed"
 EXTENSIONS = {".jpg", ".jpeg", ".png"}
 
-def upload_images():
+def upload_images() -> None:
+    """Upload images from the processed directory to Roboflow."""
     if not PROCESSED_DIR.exists():
         print(f"Error: Directory {PROCESSED_DIR} does not exist.")
         return

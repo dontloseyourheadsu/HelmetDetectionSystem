@@ -1,6 +1,6 @@
-"""Basic Autoencoder for Anomaly Detection.
+"""Convolutional Autoencoder for Anomaly Detection.
 
-This script trains a simple Autoencoder on clean images to learn the normal representation.
+This script trains a Convolutional Autoencoder on clean images to learn the normal representation.
 Anomalies (hair/trash) are detected when the reconstruction error exceeds a calculated threshold.
 """
 
@@ -15,7 +15,7 @@ from tensorflow.keras import layers, models
 BATCH_SIZE = 32
 IMG_HEIGHT = 128
 IMG_WIDTH = 128
-EPOCHS = 15
+EPOCHS = 20
 
 # --- 1. SETUP PATHS & DATA LOADING ---
 current_dir = pathlib.Path(__file__).parent.resolve()
@@ -90,20 +90,27 @@ train_ds = get_dataset(train_clean_paths)
 train_ds = train_ds.map(lambda x: (x, x)) 
 train_ds = train_ds.batch(BATCH_SIZE).cache().shuffle(1000).prefetch(tf.data.AUTOTUNE)
 
-# --- 2. BUILD THE AUTOENCODER ---
-class Autoencoder(models.Model):
-  """Simple Autoencoder model."""
+# --- 2. BUILD THE CONVOLUTIONAL AUTOENCODER ---
+class ConvolutionalAutoencoder(models.Model):
+  """Convolutional Autoencoder model."""
   
-  def __init__(self, latent_dim):
-    super(Autoencoder, self).__init__()
-    self.latent_dim = latent_dim   
+  def __init__(self):
+    super(ConvolutionalAutoencoder, self).__init__()
+    
+    # Encoder: Compresses the image into spatial features
     self.encoder = tf.keras.Sequential([
-      layers.Flatten(),
-      layers.Dense(latent_dim, activation='relu'),
+      layers.Input(shape=(IMG_HEIGHT, IMG_WIDTH, 1)),
+      layers.Conv2D(32, (3, 3), activation='relu', padding='same', strides=2), # 64x64
+      layers.Conv2D(64, (3, 3), activation='relu', padding='same', strides=2), # 32x32
+      layers.Conv2D(128, (3, 3), activation='relu', padding='same', strides=2) # 16x16
     ])
+    
+    # Decoder: Reconstructs the image from features
     self.decoder = tf.keras.Sequential([
-      layers.Dense(IMG_HEIGHT * IMG_WIDTH, activation='sigmoid'),
-      layers.Reshape((IMG_HEIGHT, IMG_WIDTH, 1))
+      layers.Conv2DTranspose(128, kernel_size=3, strides=2, activation='relu', padding='same'), # 32x32
+      layers.Conv2DTranspose(64, kernel_size=3, strides=2, activation='relu', padding='same'),  # 64x64
+      layers.Conv2DTranspose(32, kernel_size=3, strides=2, activation='relu', padding='same'),  # 128x128
+      layers.Conv2D(1, kernel_size=(3, 3), activation='sigmoid', padding='same') # Output layer
     ])
 
   def call(self, x):
@@ -112,17 +119,13 @@ class Autoencoder(models.Model):
     return decoded
 
   def get_config(self):
-    config = super().get_config()
-    config.update({"latent_dim": self.latent_dim})
-    return config
+    return super().get_config()
 
-latent_dim = 64 
-autoencoder = Autoencoder(latent_dim)
-
-autoencoder.compile(optimizer='adam', loss=tf.keras.losses.MeanSquaredError())
+autoencoder = ConvolutionalAutoencoder()
+autoencoder.compile(optimizer='adam', loss='mse')
 
 # --- 3. TRAIN ---
-print("Starting training...")
+print("Starting training (Convolutional Autoencoder)...")
 history = autoencoder.fit(
     train_ds,
     epochs=EPOCHS,
@@ -139,9 +142,11 @@ for batch in train_ds:
     train_loss.extend(loss.numpy())
 
 train_loss = np.array(train_loss)
-threshold = np.mean(train_loss) + 2 * np.std(train_loss)
+# Adjusted Threshold: Mean + 1.5 * STD (Tighter than 2*STD to catch more anomalies)
+threshold = np.mean(train_loss) + 1.5 * np.std(train_loss) 
+
 print(f"Mean Loss: {np.mean(train_loss):.4f}, Std Dev: {np.std(train_loss):.4f}")
-print(f"Anomaly Threshold: {threshold:.4f}")
+print(f"Anomaly Threshold: {threshold:.4f} (Mean + 1.5*STD)")
 
 # --- 5. EVALUATE PERFORMANCE ---
 def evaluate_set(name: str, file_paths: list, expected_is_anomaly: bool) -> np.ndarray:
@@ -210,7 +215,7 @@ if x_anom is not None:
 # Plot Comparison
 n = 5
 plt.figure(figsize=(15, 6))
-plt.suptitle(f"Autoencoder Evaluation (Threshold: {threshold:.4f})", fontsize=16)
+plt.suptitle(f"Convolutional Autoencoder Evaluation (Threshold: {threshold:.4f})", fontsize=16)
 
 if x_clean is not None:
     # Row 1: Original Clean
@@ -247,8 +252,9 @@ if x_anom is not None:
         plt.axis("off")
 
 plt.tight_layout()
+plt.savefig('results/autoencoder_reconstruction.png')
 plt.show()
 
 # --- 7. SAVE MODEL ---
-autoencoder.save('clean_field_autoencoder.keras')
-print("Model saved.")
+autoencoder.save('clean_field_autoencoder_cnn.keras')
+print("Model saved as clean_field_autoencoder_cnn.keras")
