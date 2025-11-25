@@ -1,18 +1,26 @@
+"""Image Preprocessing and Filtering.
+
+This script applies morphological filters (TopHat) and contrast enhancement to highlight
+hair and crumbs while removing large noise (like logos).
+"""
+
 import cv2
 import os
 import numpy as np
 from tqdm import tqdm
 import shutil
 
-def remove_large_noise(tophat_image, threshold_value=15, max_area=80):
-    """
-    Filters out large bright objects (like logos) from the tophat layer.
+def remove_large_noise(tophat_image: np.ndarray, threshold_value: int = 15, max_area: int = 80) -> np.ndarray:
+    """Filters out large bright objects (like logos) from the tophat layer.
     
     Args:
         tophat_image: The result of the morphological TopHat (grayscale).
         threshold_value: Minimum brightness to consider a pixel as a 'feature'.
         max_area: Maximum number of pixels allowed for a crumb. 
                   Anything bigger (like a letter in a logo) is removed.
+                  
+    Returns:
+        Filtered image with large noise removed.
     """
     # 1. Create a binary mask of the features
     _, binary = cv2.threshold(tophat_image, threshold_value, 255, cv2.THRESH_BINARY)
@@ -36,10 +44,19 @@ def remove_large_noise(tophat_image, threshold_value=15, max_area=80):
     
     return result
 
-def morphological_contrast_enhancement(image, kernel_size=19, crumb_boost=4.0, hair_boost=4.0, shadow_gamma=0.6):
-    """
-    Enhances hair (dark) and crumbs (light) by extracting them and placing them 
+def morphological_contrast_enhancement(image: np.ndarray, kernel_size: int = 19, crumb_boost: float = 4.0, hair_boost: float = 4.0, shadow_gamma: float = 0.6) -> np.ndarray:
+    """Enhances hair (dark) and crumbs (light) by extracting them and placing them 
     on a neutral gray background, while filtering out logos.
+    
+    Args:
+        image: Input image.
+        kernel_size: Size of the morphological kernel.
+        crumb_boost: Multiplier for white tophat (crumbs).
+        hair_boost: Multiplier for black tophat (hair).
+        shadow_gamma: Gamma correction factor.
+        
+    Returns:
+        Enhanced image.
     """
     # 1. Convert to Grayscale
     gray = cv2.cvtColor(image, cv2.COLOR_BGR2GRAY)
@@ -61,7 +78,6 @@ def morphological_contrast_enhancement(image, kernel_size=19, crumb_boost=4.0, h
     # --- NEW STEP: FILTER LOGOS ---
     # We filter the white_tophat to remove large structures (logos) 
     # before adding them to the final image.
-    # You may need to tune 'max_area' depending on how big your crumbs are.
     white_tophat_clean = remove_large_noise(white_tophat, threshold_value=10, max_area=60)
     # ------------------------------
 
@@ -86,7 +102,14 @@ def morphological_contrast_enhancement(image, kernel_size=19, crumb_boost=4.0, h
 
     return final
 
-def process_images(input_dir, output_dir, num_images_per_folder=1000):
+def process_images(input_dir: str, output_dir: str, num_images_per_folder: int = 1000) -> None:
+    """Process all images in the input directory.
+    
+    Args:
+        input_dir: Directory containing input images.
+        output_dir: Directory to save processed images.
+        num_images_per_folder: Maximum number of images to process per folder.
+    """
     if os.path.exists(output_dir):
         shutil.rmtree(output_dir)
     os.makedirs(output_dir)
@@ -133,5 +156,5 @@ if __name__ == "__main__":
     if not os.path.exists(input_dataset_dir):
         print(f"Error: Input directory '{input_dataset_dir}' not found.")
     else:
-        process_images(input_dataset_dir, output_processed_dir, num_images_per_folder=300)
+        process_images(input_dataset_dir, output_processed_dir, num_images_per_folder=1000)
         print("Image processing complete.")
