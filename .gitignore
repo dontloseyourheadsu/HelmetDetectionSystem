@@ -216,3 +216,5 @@ boxing/boxed
 boxing/crops
 autoboxing_debug.jpg
 CNN_Training_Data
+
+*.keras
