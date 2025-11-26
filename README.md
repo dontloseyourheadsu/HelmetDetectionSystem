@@ -39,6 +39,9 @@ The dataset consists of video frames extracted from recordings of sterile fields
       F --> G[Output Image]
   ```
 
+  ![Preprocessing Filters Output](results/filters-output.png)
+  _Figure: Comparison of original images vs. preprocessed (filtered) images._
+
 ## 2. Models & Results
 
 ### A. Autoencoder (Anomaly Detection)
