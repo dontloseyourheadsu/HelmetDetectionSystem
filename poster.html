@@ -1,0 +1,904 @@
+<!DOCTYPE html>
+<html lang="en">
+  <head>
+    <meta charset="UTF-8" />
+    <meta name="viewport" content="width=device-width, initial-scale=1.0" />
+    <title>UDLAP Academic Poster - Sterile Field Detector</title>
+    <style>
+      :root {
+        /* Adjusted colors based on your feedback */
+        --udlap-orange: #ff6900; /* More vibrant orange */
+        --udlap-green: #008149;
+        --clinical-blue: #0f4c81;
+        --light-bg: #f4f6f8;
+        --text-color: #333;
+        --border-color: #ccc;
+      }
+
+      * {
+        box-sizing: border-box;
+        margin: 0;
+        padding: 0;
+      }
+
+      body {
+        font-family: "Segoe UI", Tahoma, Geneva, Verdana, sans-serif;
+        background-color: #e0e0e0;
+        display: flex;
+        justify-content: center;
+        padding: 20px;
+      }
+
+      .poster-container {
+        width: 2000px;
+        min-height: 800px;
+        background-color: white;
+        box-shadow: 0 0 20px rgba(0, 0, 0, 0.2);
+        display: grid;
+        grid-template-columns: 1fr 1.3fr 1fr;
+        grid-template-rows: auto 1fr auto;
+        gap: 20px;
+        padding: 20px;
+      }
+
+      /* --- HEADER --- */
+      .header {
+        grid-column: 1 / -1;
+        background: linear-gradient(
+          90deg,
+          var(--clinical-blue) 0%,
+          var(--udlap-green) 100%
+        );
+        color: white;
+        padding: 20px 30px;
+        display: flex;
+        justify-content: space-between;
+        align-items: center;
+        border-bottom: 8px solid var(--udlap-orange);
+      }
+
+      .header-content h1 {
+        font-size: 2.5rem;
+        margin-bottom: 10px;
+        text-transform: uppercase;
+        font-weight: 800;
+      }
+
+      .header-content h2 {
+        font-size: 1.2rem;
+        font-weight: 400;
+        opacity: 0.9;
+      }
+
+      .dept-info {
+        font-weight: 700;
+        color: #ffecd1;
+        margin-top: 10px;
+      }
+
+      .logo-area {
+        display: flex;
+        align-items: center;
+      }
+
+      .udlap-logo {
+        width: 180px;
+        height: auto;
+      }
+
+      /* --- SECTIONS --- */
+      .column {
+        display: flex;
+        flex-direction: column;
+        gap: 20px;
+      }
+
+      .section {
+        background: white;
+        border: 1px solid #ddd;
+        padding: 0;
+      }
+
+      .section-title {
+        background-color: var(--clinical-blue);
+        color: white;
+        padding: 10px 15px;
+        font-size: 1.1rem;
+        font-weight: 700;
+        text-transform: uppercase;
+        border-left: 10px solid var(--udlap-orange);
+      }
+
+      .section-content {
+        padding: 15px;
+        font-size: 0.9rem;
+        line-height: 1.5;
+        color: var(--text-color);
+        text-align: justify;
+      }
+
+      .section-content ul {
+        padding-left: 20px;
+        margin-top: 5px;
+      }
+      .section-content li {
+        margin-bottom: 5px;
+      }
+
+      /* --- DIAGRAMS --- */
+      .figure {
+        margin: 15px 0;
+        text-align: center;
+        background-color: var(--light-bg);
+        padding: 15px;
+        border-radius: 5px;
+        border: 1px solid #eee;
+      }
+
+      .figure svg {
+        max-width: 100%;
+        height: auto;
+        overflow: visible;
+      }
+
+      /* SVG Text Styles */
+      text {
+        font-family: sans-serif;
+      }
+      .svg-label {
+        font-size: 10px;
+        font-weight: bold;
+        fill: #333;
+      }
+      .svg-sub {
+        font-size: 9px;
+        fill: #555;
+      }
+
+      .caption {
+        font-size: 0.85rem;
+        color: #444;
+        margin-top: 12px;
+        font-style: italic;
+        font-weight: 600;
+        border-top: 1px solid #ddd;
+        padding-top: 5px;
+      }
+
+      /* --- CHARTS --- */
+      .chart-box {
+        display: flex;
+        justify-content: space-around;
+        align-items: flex-end;
+        height: 180px;
+        margin-top: 10px;
+        padding-bottom: 5px;
+        border-bottom: 2px solid #333;
+        border-left: 2px solid #333;
+      }
+
+      .bar-container {
+        display: flex;
+        flex-direction: column;
+        justify-content: flex-end;
+        align-items: center;
+        height: 100%;
+        width: 25%;
+      }
+
+      .bar {
+        width: 100%;
+        background-color: var(--udlap-green);
+        text-align: center;
+        color: white;
+        font-size: 0.8rem;
+        display: flex;
+        align-items: center;
+        justify-content: center;
+        font-weight: bold;
+        box-shadow: 2px 2px 5px rgba(0, 0, 0, 0.2);
+      }
+
+      .bar-label {
+        margin-top: 8px;
+        text-align: center;
+        font-size: 0.8rem;
+        font-weight: bold;
+        color: black;
+        line-height: 1.2;
+      }
+
+      /* --- FOOTER --- */
+      .footer {
+        grid-column: 1 / -1;
+        border-top: 2px solid #ddd;
+        padding-top: 15px;
+        font-size: 0.8rem;
+        display: flex;
+        justify-content: space-between;
+        color: #555;
+      }
+
+      .tech-badge {
+        background-color: #eee;
+        border: 1px solid #ccc;
+        padding: 2px 5px;
+        border-radius: 4px;
+        font-family: monospace;
+        font-size: 0.85em;
+        color: #d63384;
+      }
+    </style>
+  </head>
+  <body>
+    <div class="poster-container">
+      <div class="header">
+        <div class="header-content">
+          <h1>Sterile-Field Micro-Contaminant Detector</h1>
+          <h2>
+            Automated Detection of Hair and Debris using Hybrid Computer Vision
+          </h2>
+          <div class="dept-info">
+            Department of Computer Science & Engineering, UDLAP
+          </div>
+        </div>
+        <div class="logo-area">
+          <svg class="udlap-logo" viewBox="0 0 250 80">
+            <text
+              x="0"
+              y="60"
+              font-family="Arial, sans-serif"
+              font-weight="900"
+              font-size="70"
+              fill="#FF6900"
+              letter-spacing="-2"
+            >
+              UDLAP
+            </text>
+          </svg>
+        </div>
+      </div>
+
+      <div class="column">
+        <div class="section">
+          <div class="section-title">1. Introduction & Problem</div>
+          <div class="section-content">
+            <p>
+              The integrity of sterile fields is critical to preventing Surgical
+              Site Infections (SSI). Manual verification is prone to
+              <strong>human error</strong> due to the microscopic nature of
+              contaminants.
+            </p>
+            <br />
+            <p>
+              <strong>Objective:</strong> Detect hair and debris on textured
+              surgical cloths using non-invasive Computer Vision.
+            </p>
+            <br />
+            <p><strong>Key Challenges:</strong></p>
+            <ul>
+              <li>Low contrast (dark hair on dark shadow).</li>
+              <li>Cloth folds mimic contaminant shapes.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">2. Preprocessing Pipeline</div>
+          <div class="section-content">
+            <p>
+              We apply a <strong>Morphological Top-Hat Transform</strong> to
+              separate small objects (high frequency) from the background
+              lighting (low frequency).
+            </p>
+
+            <div class="figure">
+              <svg viewBox="0 0 350 140">
+                <g transform="translate(10,30)">
+                  <rect
+                    width="60"
+                    height="60"
+                    fill="#f0f0f0"
+                    stroke="#333"
+                    stroke-width="2"
+                  />
+                  <text
+                    x="30"
+                    y="30"
+                    text-anchor="middle"
+                    font-size="9"
+                    fill="#999"
+                  >
+                    Noisy
+                  </text>
+                  <text x="30" y="80" text-anchor="middle" class="svg-label">
+                    1. Raw Input
+                  </text>
+                </g>
+                <path
+                  d="M 80 60 L 100 60"
+                  stroke="#FF6900"
+                  stroke-width="2"
+                  marker-end="url(#arrow)"
+                />
+                <g transform="translate(110,20)">
+                  <rect
+                    width="80"
+                    height="80"
+                    rx="5"
+                    fill="#e3f2fd"
+                    stroke="#0f4c81"
+                    stroke-width="2"
+                  />
+                  <text
+                    x="40"
+                    y="25"
+                    text-anchor="middle"
+                    class="svg-label"
+                    fill="#0f4c81"
+                  >
+                    Top-Hat Op
+                  </text>
+                  <line
+                    x1="10"
+                    y1="35"
+                    x2="70"
+                    y2="35"
+                    stroke="#0f4c81"
+                    stroke-width="1"
+                  />
+                  <text
+                    x="40"
+                    y="55"
+                    text-anchor="middle"
+                    font-size="9"
+                    font-family="monospace"
+                  >
+                    src - open(src)
+                  </text>
+                  <text
+                    x="40"
+                    y="70"
+                    text-anchor="middle"
+                    font-size="8"
+                    fill="#666"
+                  >
+                    Kernel: 9x9
+                  </text>
+                </g>
+                <path d="M 200 60 L 220 60" stroke="#FF6900" stroke-width="2" />
+                <g transform="translate(230,30)">
+                  <rect
+                    width="60"
+                    height="60"
+                    fill="#333"
+                    stroke="#008149"
+                    stroke-width="2"
+                  />
+                  <circle cx="30" cy="30" r="4" fill="white" />
+                  <text x="30" y="80" text-anchor="middle" class="svg-label">
+                    3. Binary Mask
+                  </text>
+                </g>
+              </svg>
+              <div class="caption">
+                Fig 1. Data Flow: The Top-Hat operation highlights elements
+                smaller than the structural element (9x9 kernel).
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="column" style="flex: 1.2">
+        <div class="section">
+          <div class="section-title">3. Hybrid Model Architecture</div>
+          <div class="section-content">
+            <h4 style="margin-top: 10px; color: var(--clinical-blue)">
+              A. CNN Classifier (Supervised)
+            </h4>
+            <p>
+              A custom VGG-style network trained to classify specific types of
+              trash.
+            </p>
+            <div class="figure">
+              <svg viewBox="0 0 400 130">
+                <g transform="translate(20,30)">
+                  <rect width="40" height="40" fill="#ddd" stroke="#333" />
+                  <text x="20" y="55" text-anchor="middle" font-size="9">
+                    128px
+                  </text>
+                  <text x="20" y="90" text-anchor="middle" class="svg-label">
+                    Input
+                  </text>
+                </g>
+                <g transform="translate(90,20)">
+                  <rect width="20" height="60" fill="#FF6900" opacity="0.9" />
+                  <rect
+                    x="25"
+                    y="10"
+                    width="10"
+                    height="40"
+                    fill="#666"
+                    opacity="0.5"
+                  />
+                  <text x="10" y="90" text-anchor="middle" class="svg-sub">
+                    Conv2D
+                  </text>
+                  <text x="30" y="65" text-anchor="middle" class="svg-sub">
+                    Pool
+                  </text>
+                </g>
+                <g transform="translate(145,20)">
+                  <rect width="20" height="60" fill="#FF6900" opacity="0.9" />
+                  <rect
+                    x="25"
+                    y="10"
+                    width="10"
+                    height="40"
+                    fill="#666"
+                    opacity="0.5"
+                  />
+                  <text x="10" y="90" text-anchor="middle" class="svg-sub">
+                    Conv2D
+                  </text>
+                  <text x="30" y="65" text-anchor="middle" class="svg-sub">
+                    Pool
+                  </text>
+                </g>
+                <g transform="translate(210,10)">
+                  <rect width="15" height="80" fill="#0f4c81" />
+                  <text x="7" y="105" text-anchor="middle" class="svg-label">
+                    Dense
+                  </text>
+                  <text
+                    x="7"
+                    y="50"
+                    text-anchor="middle"
+                    font-size="8"
+                    fill="white"
+                    writing-mode="tb"
+                  >
+                    128
+                  </text>
+                </g>
+                <g transform="translate(250,20)">
+                  <circle cx="10" cy="15" r="4" fill="#333" />
+                  <text x="25" y="18" font-size="9">Hair</text>
+                  <circle cx="10" cy="35" r="4" fill="#333" />
+                  <text x="25" y="38" font-size="9">Lint</text>
+                  <text x="10" y="80" text-anchor="middle" class="svg-label">
+                    Softmax
+                  </text>
+                </g>
+              </svg>
+              <div class="caption">
+                Fig 2. CNN Architecture: Sequential convolution blocks followed
+                by a dense classification head.
+              </div>
+            </div>
+
+            <h4 style="margin-top: 10px; color: var(--clinical-blue)">
+              B. Roboflow / SAM (Zero-Shot)
+            </h4>
+            <p>
+              The Segment Anything Model uses a heavy encoder for the image and
+              a light encoder for prompts.
+            </p>
+            <div class="figure">
+              <svg viewBox="0 0 420 160">
+                <g transform="translate(10,20)">
+                  <rect
+                    width="60"
+                    height="70"
+                    fill="#0f4c81"
+                    fill-opacity="0.2"
+                    stroke="#0f4c81"
+                  />
+                  <text
+                    x="30"
+                    y="35"
+                    text-anchor="middle"
+                    font-weight="bold"
+                    font-size="9"
+                    fill="#0f4c81"
+                  >
+                    Image
+                  </text>
+                  <text
+                    x="30"
+                    y="48"
+                    text-anchor="middle"
+                    font-weight="bold"
+                    font-size="9"
+                    fill="#0f4c81"
+                  >
+                    Encoder
+                  </text>
+                  <text x="30" y="62" text-anchor="middle" class="svg-sub">
+                    (ViT)
+                  </text>
+                </g>
+                <g transform="translate(100,35)">
+                  <rect width="40" height="40" fill="#ccc" stroke="#333" />
+                  <text x="20" y="20" text-anchor="middle" font-size="9">
+                    Img
+                  </text>
+                  <text x="20" y="32" text-anchor="middle" font-size="9">
+                    Emb
+                  </text>
+                </g>
+                <line
+                  x1="70"
+                  y1="55"
+                  x2="100"
+                  y2="55"
+                  stroke="#333"
+                  stroke-width="2"
+                />
+                <line
+                  x1="140"
+                  y1="55"
+                  x2="180"
+                  y2="55"
+                  stroke="#333"
+                  stroke-width="2"
+                />
+                <line
+                  x1="180"
+                  y1="55"
+                  x2="180"
+                  y2="65"
+                  stroke="#333"
+                  stroke-width="2"
+                />
+                <g transform="translate(30,110)">
+                  <text x="0" y="15" font-size="9" font-style="italic">
+                    "Thin lines"
+                  </text>
+                  <rect
+                    x="60"
+                    y="0"
+                    width="70"
+                    height="25"
+                    fill="#FF6900"
+                    fill-opacity="0.8"
+                  />
+                  <text
+                    x="95"
+                    y="16"
+                    text-anchor="middle"
+                    font-size="9"
+                    fill="white"
+                    font-weight="bold"
+                  >
+                    Prompt Enc
+                  </text>
+                </g>
+                <polyline
+                  points="160,122 180,122 180,95"
+                  fill="none"
+                  stroke="#333"
+                  stroke-width="2"
+                />
+                <g transform="translate(160, 45)">
+                  <rect
+                    x="0"
+                    y="0"
+                    width="90"
+                    height="50"
+                    fill="#008149"
+                    fill-opacity="0.9"
+                    rx="5"
+                  />
+                  <text
+                    x="45"
+                    y="28"
+                    text-anchor="middle"
+                    font-weight="bold"
+                    font-size="10"
+                    fill="white"
+                  >
+                    Mask Decoder
+                  </text>
+                </g>
+                <g transform="translate(280, 45)">
+                  <line
+                    x1="-30"
+                    y1="25"
+                    x2="-10"
+                    y2="25"
+                    stroke="#333"
+                    stroke-width="2"
+                    marker-end="url(#arrow)"
+                  />
+                  <rect
+                    x="0"
+                    y="0"
+                    width="50"
+                    height="50"
+                    fill="#222"
+                    stroke="#333"
+                  />
+                  <path
+                    d="M 10 25 L 20 40 L 40 10"
+                    stroke="white"
+                    stroke-width="2"
+                    fill="none"
+                  />
+                  <text x="25" y="65" text-anchor="middle" class="svg-label">
+                    Output
+                  </text>
+                </g>
+              </svg>
+              <div class="caption">
+                Fig 3. SAM: Prompts ("Find lines") allow real-time queries on
+                top of the pre-computed image embedding.
+              </div>
+            </div>
+
+            <h4 style="margin-top: 10px; color: var(--clinical-blue)">
+              C. Autoencoder (Unsupervised)
+            </h4>
+            <p>
+              Anomaly detection model. It learns to reconstruct the
+              <em>clean cloth</em>. Any hair causes a high reconstruction error.
+            </p>
+            <div class="figure">
+              <svg viewBox="0 0 420 140">
+                <g transform="translate(20,20)">
+                  <rect width="30" height="70" fill="#ddd" stroke="black" />
+                  <text
+                    x="15"
+                    y="90"
+                    text-anchor="middle"
+                    font-size="10"
+                    font-weight="bold"
+                  >
+                    Input
+                  </text>
+                </g>
+                <g transform="translate(70, 20)">
+                  <polygon
+                    points="0,0 60,20 60,50 0,70"
+                    fill="#0f4c81"
+                    opacity="0.9"
+                  />
+                  <text
+                    x="30"
+                    y="100"
+                    text-anchor="middle"
+                    font-size="10"
+                    fill="#0f4c81"
+                    font-weight="bold"
+                  >
+                    Encoder
+                  </text>
+                </g>
+                <g transform="translate(140, 45)">
+                  <rect
+                    x="0"
+                    y="0"
+                    width="20"
+                    height="20"
+                    fill="#FF6900"
+                    stroke="#333"
+                  />
+                  <text
+                    x="10"
+                    y="-10"
+                    text-anchor="middle"
+                    font-size="10"
+                    font-weight="bold"
+                  >
+                    Z
+                  </text>
+                </g>
+                <g transform="translate(170, 20)">
+                  <polygon
+                    points="0,20 60,0 60,70 0,50"
+                    fill="#008149"
+                    opacity="0.9"
+                  />
+                  <text
+                    x="30"
+                    y="100"
+                    text-anchor="middle"
+                    font-size="10"
+                    fill="#008149"
+                    font-weight="bold"
+                  >
+                    Decoder
+                  </text>
+                </g>
+                <g transform="translate(250,20)">
+                  <rect width="30" height="70" fill="#ddd" stroke="black" />
+                  <text
+                    x="15"
+                    y="90"
+                    text-anchor="middle"
+                    font-size="10"
+                    font-weight="bold"
+                  >
+                    Reconst.
+                  </text>
+                </g>
+                <g transform="translate(300, 30)">
+                  <circle
+                    cx="25"
+                    cy="25"
+                    r="18"
+                    fill="none"
+                    stroke="red"
+                    stroke-width="2"
+                  />
+                  <text
+                    x="25"
+                    y="30"
+                    text-anchor="middle"
+                    font-size="11"
+                    fill="red"
+                    font-weight="bold"
+                  >
+                    MSE
+                  </text>
+                  <text x="25" y="65" text-anchor="middle" font-size="9">
+                    Error > Thresh
+                  </text>
+                  <text
+                    x="25"
+                    y="78"
+                    text-anchor="middle"
+                    font-size="9"
+                    font-weight="bold"
+                  >
+                    = ANOMALY
+                  </text>
+                </g>
+                <path
+                  d="M 35 95 Q 35 120 150 120 T 265 95"
+                  fill="none"
+                  stroke="#666"
+                  stroke-dasharray="4,4"
+                  stroke-width="1.5"
+                />
+              </svg>
+              <div class="caption">
+                Fig 4. Autoencoder: High MSE (Reconstruction Error) indicates
+                contamination.
+              </div>
+            </div>
+          </div>
+        </div>
+      </div>
+
+      <div class="column">
+        <div class="section">
+          <div class="section-title">4. Experimental Results</div>
+          <div class="section-content">
+            <p>
+              We evaluated 500+ frames. There is a trade-off between pure
+              accuracy and operational robustness.
+            </p>
+
+            <div class="figure">
+              <div class="chart-box">
+                <div class="bar-container">
+                  <div class="bar" style="height: 98%">98%</div>
+                  <div class="bar-label">CNN<br />Accuracy</div>
+                </div>
+                <div class="bar-container">
+                  <div
+                    class="bar"
+                    style="height: 81%; background-color: var(--udlap-orange)"
+                  >
+                    81%
+                  </div>
+                  <div class="bar-label">AE<br />Recall</div>
+                </div>
+                <div class="bar-container">
+                  <div class="bar" style="height: 60%; background-color: #aaa">
+                    60%
+                  </div>
+                  <div class="bar-label">SAM<br />Precision</div>
+                </div>
+              </div>
+              <div class="caption">Fig 5. Performance metrics.</div>
+            </div>
+
+            <p><strong>Clarification on Best Model:</strong></p>
+            <ul>
+              <li>
+                <strong>CNN (98%):</strong> Excellent performance in the lab,
+                but fails if a <em>new</em> type of trash appears that it wasn't
+                trained on.
+              </li>
+              <li>
+                <strong>Autoencoder (81%):</strong> The
+                <strong>preferred solution</strong>. It detects
+                <em>anything</em> that isn't cloth (anomalies), making it safer
+                for patients.
+              </li>
+              <li><strong>SAM (60%):</strong> Struggles with cloth folds.</li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">5. Conclusion</div>
+          <div class="section-content">
+            <p>
+              <strong>1. The "Texture" Solution:</strong>
+              We conclude that unsupervised learning (Autoencoder) is superior
+              for this medical application. It treats the problem as "Texture
+              Anomaly Detection" rather than "Object Detection," bypassing the
+              need to label thousands of trash examples.
+            </p>
+            <p>
+              <strong>2. Preprocessing is Vital:</strong>
+              The Top-Hat transform increased detection rates by 15% by
+              neutralizing the uneven overhead lighting of the operating room.
+            </p>
+
+            <h4
+              style="
+                margin-top: 15px;
+                color: var(--clinical-blue);
+                font-size: 1rem;
+              "
+            >
+              Future Improvements
+            </h4>
+            <ul>
+              <li>
+                <strong>Vision Transformers (ViT):</strong> To capture global
+                texture context and ignore local fold patterns.
+              </li>
+              <li>
+                <strong>TensorRT Optimization:</strong> To enable real-time
+                inference (30fps) on edge devices.
+              </li>
+            </ul>
+
+            <h4
+              style="
+                margin-top: 15px;
+                color: var(--clinical-blue);
+                font-size: 1rem;
+              "
+            >
+              Applications
+            </h4>
+            <ul>
+              <li>
+                <strong>Sterile Processing Dept (SPD):</strong> Automated final
+                check before packaging surgical kits.
+              </li>
+              <li>
+                <strong>Robotic Surgery:</strong> Real-time visual assistant for
+                contaminant awareness.
+              </li>
+            </ul>
+          </div>
+        </div>
+
+        <div class="section">
+          <div class="section-title">6. References</div>
+          <div class="section-content" style="font-size: 0.75rem">
+            <ol>
+              <li>Kirillov, A., et al. (2023). "Segment Anything." arXiv.</li>
+              <li>Goodfellow, I. (2016). "Deep Learning." MIT Press.</li>
+              <li>Project Repo: <em>github.com/dontloseyourheadsu</em></li>
+            </ol>
+          </div>
+        </div>
+      </div>
+
+      <div class="footer">
+        <div>
+          <strong>UDLAP Artificial Vision.
+        </div>
+      </div>
+    </div>
+  </body>
+</html>
